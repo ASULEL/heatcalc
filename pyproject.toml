@@ -1,0 +1,31 @@
+[project]
+name = "heatcalc"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "asule", email = "1270784659@qq.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.143.2",
+    "iapws>=1.5.5",
+    "langchain>=1.4.6",
+    "langchain-openai>=1.7.2",
+    "langchainhub>=0.1.21",
+    "langgraph>=1.2.15",
+    "python-dotenv>=1.2.4",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+heatcalc = "heatcalc:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
