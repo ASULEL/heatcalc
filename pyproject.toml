@@ -1,7 +1,7 @@
 [project]
 name = "heatcalc"
 version = "0.1.0"
-description = "Add your description here"
+description = "工业蒸汽供热、电加热器与热泵购电成本及熔盐储量计算助手"
 readme = "README.md"
 authors = [
     { name = "asule", email = "1270784659@qq.com" }

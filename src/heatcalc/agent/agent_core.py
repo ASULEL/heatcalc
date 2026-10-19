@@ -1,9 +1,10 @@
+import json
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from heatcalc.agent.tools import ALL_TOOLS
-from heatcalc.agent.formatting import format_result_for_display
+from heatcalc.agent.formatting import DISPLAY_DECIMALS, format_result_for_display
 
 load_dotenv()
 
@@ -15,6 +16,18 @@ llm = ChatOpenAI(
     temperature=0,
 )
 llm_with_tools = llm.bind_tools(ALL_TOOLS)
+
+RESULT_DISPLAY_RULES = SystemMessage(
+    content=(
+        "计算工具返回的 raw_result 是原始计算结果，"
+        "display_result 是换算单位并舍入后的展示结果。"
+        "最终回答中的计算结果必须采用 display_result 的 value 和 unit，"
+        f"固定显示 {DISPLAY_DECIMALS} 位小数，不足时补零，"
+        "不得自行取整、省略小数或进一步舍入。"
+        "需要继续调用计算工具时，使用 raw_result 中未舍入的原始数值，"
+        "并按工具参数要求的单位传入，不要用展示值代替原始值参与后续计算。"
+    )
+)
 
 
 def chat(user_input: str, messages: list) -> tuple[str, list]:
@@ -29,7 +42,7 @@ def chat(user_input: str, messages: list) -> tuple[str, list]:
 
     max_iterations = 5
     for i in range(max_iterations):
-        response = llm_with_tools.invoke(messages)
+        response = llm_with_tools.invoke([RESULT_DISPLAY_RULES, *messages])
         messages.append(response)
 
         if not response.tool_calls:
@@ -44,7 +57,10 @@ def chat(user_input: str, messages: list) -> tuple[str, list]:
             display_result = format_result_for_display(raw_result)
 
             tool_message = ToolMessage(
-                content=str(display_result),
+                content=json.dumps(
+                    {"raw_result": raw_result, "display_result": display_result},
+                    ensure_ascii=False,
+                ),
                 tool_call_id=tool_call['id']
             )
             messages.append(tool_message)

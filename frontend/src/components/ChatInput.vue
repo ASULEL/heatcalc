@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+const props = defineProps<{
+  disabled?: boolean
+}>()
+
 const emit = defineEmits<{
   send: [text: string]
 }>()
@@ -8,6 +12,7 @@ const emit = defineEmits<{
 const text = ref('')
 
 function submit() {
+  if (props.disabled) return
   const value = text.value.trim()
   if (!value) return
   emit('send', value)
@@ -38,7 +43,7 @@ function handleKeydown(e: KeyboardEvent) {
       <button
         type="button"
         class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-700 disabled:opacity-40"
-        :disabled="!text.trim()"
+        :disabled="disabled || !text.trim()"
         @click="submit"
       >
         ↑

@@ -45,6 +45,6 @@ watch(
       </div>
     </div>
 
-    <ChatInput @send="(text) => emit('send', text)" />
+    <ChatInput :disabled="loading" @send="(text) => emit('send', text)" />
   </div>
 </template>

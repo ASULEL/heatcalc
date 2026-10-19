@@ -1,125 +1,124 @@
-from abc import ABC,abstractmethod
-from iapws import IAPWS97, IAPWS95
+from abc import ABC, abstractmethod
+from math import isfinite
+
+from iapws import IAPWS95
+
+from heatcalc import salt_storage
 
 
 class HeatSourceStrategy(ABC):
+    """规定热源的正反算接口，并提供共用的蒸汽和储热计算。"""
 
-    def __init__(self,
-                 heat_exchange_efficiency: float,  # 换热效率
-                 storage_efficiency: float,  # 储热效率
-                 salt_specific_heat: float,  # 熔盐比热容
-                 salt_temp_delta: float  # 熔盐温差
-                 ):
+    def __init__(
+        self,
+        heat_exchange_efficiency: float,
+        storage_efficiency: float,
+        salt_specific_heat: float,
+        salt_temp_delta: float,
+    ) -> None:
         """
-        :param heat_exchange_efficiency:
-        :param storage_efficiency:
-        :param salt_specific_heat:
-        :param salt_temp_delta:
+        :param heat_exchange_efficiency: 换热效率
+        :param storage_efficiency: 储热效率
+        :param salt_specific_heat: 熔盐比热容 (kJ/(kg·K))
+        :param salt_temp_delta: 熔盐温差 (K)
         """
         self.heat_exchange_efficiency = heat_exchange_efficiency
         self.storage_efficiency = storage_efficiency
         self.salt_specific_heat = salt_specific_heat
         self.salt_temp_delta = salt_temp_delta
 
-    def water_to_steam_power(self,
-                            steam_pressure: float,# MPa
-                            steam_temp: float,  # °C
-                            feedwater_pressure: float,  # MPa
-                            feedwater_temp: float,  # °C
-                            mass_flow: float  # kg/s（标准SI单位）
-                            ) -> float:
+    @abstractmethod
+    def calculate_cost_from_steam(
+        self,
+        steam_pressure: float,
+        steam_temp: float,
+        feedwater_pressure: float,
+        feedwater_temp: float,
+        mass_flow: float,
+        operating_hours: float,
+        electricity_price: float,
+        steam_supply_hours: float,
+    ) -> dict[str, float]:
+        """根据蒸汽需求返回各阶段功率 (kW)、电量 (kWh) 和购电成本 (元)。"""
+        ...
+
+    @abstractmethod
+    def calculate_mass_flow_from_cost(
+        self,
+        steam_pressure: float,
+        steam_temp: float,
+        feedwater_pressure: float,
+        feedwater_temp: float,
+        operating_hours: float,
+        electricity_price: float,
+        electricity_cost: float,
+        steam_supply_hours: float,
+    ) -> dict[str, float]:
+        """根据购电成本返回各阶段结果和蒸汽质量流量 mass_flow (kg/s)。"""
+        ...
+
+    def specific_enthalpy_difference(
+        self,
+        steam_pressure: float,
+        steam_temp: float,
+        feedwater_pressure: float,
+        feedwater_temp: float,
+    ) -> float:
+        """根据压力 (MPa)、温度 (°C)，计算制汽比焓差 (kJ/kg)。"""
+        parameters = {
+            "蒸汽压力": steam_pressure,
+            "蒸汽温度": steam_temp,
+            "给水压力": feedwater_pressure,
+            "给水温度": feedwater_temp,
+        }
+        for name, value in parameters.items():
+            if not isfinite(value):
+                raise ValueError(f"{name}必须是有限数值")
+
+        if steam_pressure <= 0 or feedwater_pressure <= 0:
+            raise ValueError("蒸汽压力和给水压力必须大于零")
+        if steam_temp <= -273.15 or feedwater_temp <= -273.15:
+            raise ValueError("蒸汽温度和给水温度必须高于绝对零度")
+
+        steam_state = IAPWS95(P=steam_pressure, T=steam_temp + 273.15)
+        feedwater_state = IAPWS95(
+            P=feedwater_pressure, T=feedwater_temp + 273.15
+        )
+        enthalpy_diff = steam_state.h - feedwater_state.h
+        if not isfinite(enthalpy_diff) or enthalpy_diff <= 0:
+            raise ValueError("蒸汽焓必须大于给水焓，才能计算制汽流量")
+        return float(enthalpy_diff)
+
+    def water_to_steam_power(
+        self,
+        steam_pressure: float,
+        steam_temp: float,
+        feedwater_pressure: float,
+        feedwater_temp: float,
+        mass_flow: float,
+    ) -> float:
         """
         计算水变成蒸汽需要的热功率
-
-        注意：所有参数必须使用SI单位
 
         :param steam_pressure: 蒸汽压力 (MPa)
         :param steam_temp: 蒸汽温度 (°C)
         :param feedwater_pressure: 给水压力 (MPa)
         :param feedwater_temp: 给水温度 (°C)
-        :param mass_flow: 质量流量 (kg/s)  ← 注意单位
+        :param mass_flow: 质量流量 (kg/s)
         :return: 热功率 (kW)
         """
-        # 1.蒸汽焓值
-        steam_state = IAPWS95(P=steam_pressure,T=steam_temp + 273.15)
-        h_steam = steam_state.h
-        # 2.给水焓值
-        feedwater_state = IAPWS95(P=feedwater_pressure,T=feedwater_temp + 273.15)
-        h_feedwater = feedwater_state.h
-        # 3.计算焓差
-        enthalpy_diff = h_steam - h_feedwater
-        # 4.计算热功率
-        thermal_power_kw = enthalpy_diff * mass_flow
-        return thermal_power_kw
+        enthalpy_diff = self.specific_enthalpy_difference(
+            steam_pressure, steam_temp, feedwater_pressure, feedwater_temp
+        )
+        return enthalpy_diff * mass_flow
 
-    def sgs_input_power(self,water_to_steam_power: float)->float:
-        """
-        :param water_to_steam_power: 水变蒸汽的功率
-        :return:
-        """
+    def sgs_input_power(self, water_to_steam_power: float) -> float:
+        """将制汽热功率转换为 SGS 入口功率，单位均为 kW。"""
         return water_to_steam_power / self.heat_exchange_efficiency
 
-    def  charging_thermal_power(self,sgs_input_power:float):
-        """
-            计算充热端热功率（热源需要输出多少热量充入储热系统）
-
-            :param sgs_input_power: SGS入口需要的功率 (kW)
-            :return: 充热端热功率 (kW)
-        """
+    def charging_thermal_power(self, sgs_input_power: float) -> float:
+        """将 SGS 入口功率转换为充热端热功率，单位均为 kW。"""
         return sgs_input_power / self.storage_efficiency
-
-    @abstractmethod
-    def electrical_power(self,charging_power:float):
-        """
-             将充热端热功率转换为电功率（子类必须实现）
-             电加热器：用效率计算
-             热泵：用COP计算
-
-             :param charging_power: 充热端热功率 (kW)
-             :return: 所需电功率 (kW)
-        """
-        ...
-
-
-
-
-    def calculate_cost_from_steam(self,
-                                  steam_pressure: float,  # MPa
-                                  steam_temp: float,  # °C
-                                  feedwater_pressure: float,  # MPa
-                                  feedwater_temp: float,  # °C
-                                  mass_flow: float,
-                                  operating_hours: float,
-                                  electricity_price: float
-                                  ) -> float:
-        """
-              从蒸汽参数一路计算到购电成本
-
-              :param steam_pressure: 蒸汽压力 (MPa)
-              :param steam_temp: 蒸汽温度 (°C)
-              :param feedwater_pressure: 给水压力 (MPa)
-              :param feedwater_temp: 给水温度 (°C)
-              :param mass_flow: 质量流量 (kg/s)
-              :param operating_hours: 运行时长 (h)
-              :param electricity_price: 电价 (元/kWh)
-              :return: 购电成本 (元)
-        """
-        w2s = self.water_to_steam_power(steam_pressure,
-                                  steam_temp,
-                                  feedwater_pressure,
-                                  feedwater_temp,
-                                  mass_flow)
-        sgs_in = self.sgs_input_power(w2s)
-        charging = self.charging_thermal_power(sgs_in)
-        elec = self.electrical_power(charging)
-        return {
-            'water_to_steam_power': float(w2s),
-            'sgs_input_power': float(sgs_in),
-            'charging_power': float(charging),
-            'electrical_power': float(elec),
-            'electricity_consumption': float(elec * operating_hours),
-            'electricity_cost': float(elec * operating_hours * electricity_price)
-        }
 
     def calculate_salt_mass(self, charging_power: float, storage_duration: float) -> float:
         """
@@ -129,5 +128,9 @@ class HeatSourceStrategy(ABC):
         :param storage_duration: 储热时长 (h)
         :return: 熔盐质量 (吨)
         """
-        # 你的实现
-        return charging_power * storage_duration * 3600 / (self.salt_specific_heat * self.salt_temp_delta) / 1000
+        return salt_storage.calculate_salt_mass(
+            charging_power=charging_power,
+            storage_duration=storage_duration,
+            salt_specific_heat=self.salt_specific_heat,
+            salt_temp_delta=self.salt_temp_delta,
+        )

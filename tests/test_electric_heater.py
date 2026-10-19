@@ -35,3 +35,4 @@ print(heater.calculate_cost_from_steam(
 print(heater.calculate_salt_mass(
     charging_power, 8
 ))
+

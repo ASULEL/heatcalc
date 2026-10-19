@@ -7,5 +7,6 @@ export interface ChatMessage {
 export interface Conversation {
   id: string
   title: string
+  hasCustomTitle: boolean
   messages: ChatMessage[]
 }
