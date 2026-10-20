@@ -64,6 +64,7 @@ def test_steam_tools_can_supply_charging_power_to_storage_tool(tool, demand):
         "feedwater_pressure": 0.1,
         "feedwater_temp": 20,
         "operating_hours": 8,
+        "steam_supply_hours": 8,
         "electricity_price": 0.35,
         "electrical_efficiency": 0.985,
         "heat_exchange_efficiency": 0.99,

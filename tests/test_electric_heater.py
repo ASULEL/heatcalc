@@ -29,10 +29,10 @@ print(heater.calculate_cost_from_steam(
     feedwater_pressure=0.1, feedwater_temp=20,
     mass_flow=100 * 1000 / 3600,
     operating_hours=8,
-    electricity_price=0.35
+    electricity_price=0.35,
+    steam_supply_hours=8,
 ))
 
 print(heater.calculate_salt_mass(
     charging_power, 8
 ))
-

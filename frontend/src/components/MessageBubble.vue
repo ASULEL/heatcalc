@@ -22,7 +22,7 @@ const renderedContent = computed(() => {
 </script>
 
 <template>
-  <div class="flex w-full gap-3 px-6 py-5">
+  <div class="flex w-full items-start gap-3 px-4 py-4 sm:px-6">
     <!-- 头像：assistant在左，user在右 -->
     <div
       v-if="message.role === 'assistant'"
@@ -32,11 +32,11 @@ const renderedContent = computed(() => {
     </div>
 
     <div
-      class="flex-1 rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed"
+      class="min-w-0 rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed [overflow-wrap:anywhere]"
       :class="
         message.role === 'user'
-          ? 'ml-auto max-w-2xl bg-neutral-800 text-white whitespace-pre-wrap'
-          : 'mr-auto max-w-3xl bg-neutral-100 text-neutral-900 prose prose-sm prose-neutral max-w-none'
+          ? 'ml-auto w-fit max-w-2xl bg-neutral-800 text-white whitespace-pre-wrap'
+          : 'mr-auto flex-1 bg-neutral-100 text-neutral-900 prose prose-sm prose-neutral max-w-3xl'
       "
     >
       <!-- 用户消息：纯文本 -->

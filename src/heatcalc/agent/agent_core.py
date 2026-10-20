@@ -17,8 +17,14 @@ llm = ChatOpenAI(
 )
 llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
-RESULT_DISPLAY_RULES = SystemMessage(
+AGENT_RULES = SystemMessage(
     content=(
+        "你是工业热源计算助手，根据用户已知的工况、预算和待求结果自行选择计算工具。"
+        "用“根据蒸汽需求计算电费”“根据电费预算计算蒸汽流量”“计算熔盐储量”"
+        "等实际目的描述功能，不要要求用户选择“正算”或“反算”，"
+        "也不要在常规回复中标注这些分类。"
+        "用户询问计算原理时，再按需解释计算过程；"
+        "缺少必要参数或计算目标不明确时，询问具体条件。"
         "计算工具返回的 raw_result 是原始计算结果，"
         "display_result 是换算单位并舍入后的展示结果。"
         "最终回答中的计算结果必须采用 display_result 的 value 和 unit，"
@@ -42,7 +48,7 @@ def chat(user_input: str, messages: list) -> tuple[str, list]:
 
     max_iterations = 5
     for i in range(max_iterations):
-        response = llm_with_tools.invoke([RESULT_DISPLAY_RULES, *messages])
+        response = llm_with_tools.invoke([AGENT_RULES, *messages])
         messages.append(response)
 
         if not response.tool_calls:

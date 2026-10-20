@@ -22,16 +22,21 @@ def operating_conditions():
         "feedwater_pressure": 0.1,
         "feedwater_temp": 20,
         "operating_hours": 8,
+        "steam_supply_hours": 8,
         "electricity_price": 0.35,
     }
 
 
 @pytest.mark.parametrize(
+    "steam_supply_hours, operating_hours",
+    [(8, 8), (24, 8), (16, 6)],
+)
+@pytest.mark.parametrize(
     "steam_pressure, steam_temp, feedwater_pressure, feedwater_temp, "
-    "operating_hours, electricity_price, mass_flow",
+    "electricity_price, mass_flow",
     [
-        (1.5, 200, 0.1, 20, 8, 0.35, 100 / 3.6),
-        (3.0, 300, 0.5, 90, 6, 0.6, 10 / 3.6),
+        (1.5, 200, 0.1, 20, 0.35, 100 / 3.6),
+        (3.0, 300, 0.5, 90, 0.6, 10 / 3.6),
     ],
 )
 def test_reverse_recovers_forward_flow_and_intermediate_results(
@@ -43,6 +48,7 @@ def test_reverse_recovers_forward_flow_and_intermediate_results(
     operating_hours,
     electricity_price,
     mass_flow,
+    steam_supply_hours,
 ):
     conditions = {
         "steam_pressure": steam_pressure,
@@ -50,6 +56,7 @@ def test_reverse_recovers_forward_flow_and_intermediate_results(
         "feedwater_pressure": feedwater_pressure,
         "feedwater_temp": feedwater_temp,
         "operating_hours": operating_hours,
+        "steam_supply_hours": steam_supply_hours,
         "electricity_price": electricity_price,
     }
     forward = heater.calculate_cost_from_steam(**conditions, mass_flow=mass_flow)
@@ -71,6 +78,19 @@ def test_existing_example_budget_produces_100_tonnes_per_hour(
     )
 
     assert result["mass_flow"] * 3.6 == pytest.approx(100)
+
+
+def test_same_budget_spread_over_24_hours_supplies_one_third_of_the_flow(
+    heater, operating_conditions
+):
+    operating_conditions["steam_supply_hours"] = 24
+
+    result = heater.calculate_mass_flow_from_cost(
+        **operating_conditions, electricity_cost=218491.75463413665
+    )
+
+    assert result["mass_flow"] * 3.6 == pytest.approx(100 / 3)
+    assert result["heat_energy"] == pytest.approx(614898.2237560702)
 
 
 def test_zero_cost_produces_zero_flow_and_power(heater, operating_conditions):

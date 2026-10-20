@@ -26,6 +26,11 @@ const {
       @rename="renameConversation"
       @delete="deleteConversation"
     />
-    <ChatWindow :messages="current?.messages || []" :loading="loading" @send="sendMessage" />
+    <ChatWindow
+      :title="current?.title || '新对话'"
+      :messages="current?.messages || []"
+      :loading="loading"
+      @send="sendMessage"
+    />
   </div>
 </template>
