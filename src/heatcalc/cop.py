@@ -1,5 +1,7 @@
 """供工具入口和热泵类复用的热泵系统 COP 计算函数。"""
 
+from math import isfinite
+
 from CoolProp.CoolProp import PropsSI
 
 
@@ -11,7 +13,7 @@ def calculate_cop(
     charging_power: float,  # E9，接口单位为 kW
 
     # 压缩机
-    compressor_inlet_pressure: float,  # E11，接口单位为 kPa
+    compressor_inlet_pressure: float,  # 兼容原接口；实际进口压力由上游状态和 E70 推导
     compressor_outlet_pressure: float,  # E14，接口单位为 kPa
     compressor_isentropic_efficiency: float,  # E17
     compressor_mechanical_loss: float,  # E20
@@ -55,7 +57,8 @@ def calculate_cop(
     :param salt_temp_low: 熔盐下限温度 (℃)
     :param charging_power: 热泵输出热功率 (kW)
 
-    :param compressor_inlet_pressure: 压缩机进口压力 (kPa)
+    :param compressor_inlet_pressure: 原接口保留字段 (kPa)；实际进口压力使用
+        回热器低压侧出口压力减去 regenerator_to_compressor_pressure_drop
     :param compressor_outlet_pressure: 压缩机出口压力 (kPa)
     :param compressor_isentropic_efficiency: 压缩机等熵效率，取值 (0, 1]
     :param compressor_mechanical_loss: 压缩机机械损失功率 (kW)
@@ -130,6 +133,13 @@ def calculate_cop(
     regenerator_low_side_outlet_pressure = (  # E43，kPa
         regenerator_low_side_inlet_pressure - regenerator_low_side_pressure_drop
     )
+    # 压缩机进口承接回热器低压侧出口，再扣除连接管道压降，单位 kPa。
+    compressor_inlet_pressure = (
+        regenerator_low_side_outlet_pressure - regenerator_to_compressor_pressure_drop
+    )
+    if not isfinite(compressor_inlet_pressure) or compressor_inlet_pressure <= 0:
+        raise ValueError("扣除回热器至压缩机管道压降后的压缩机进口压力必须是大于零的有限数值 (kPa)")
+
     # 高压侧从压缩机出口依次扣除上游管道、放热器和回热器高压侧压降。
     regenerator_high_side_inlet_pressure = (  # E33，kPa
         compressor_outlet_pressure
@@ -167,7 +177,7 @@ def calculate_cop(
         working_fluid,
     ) / 1000
 
-    # 压缩机：进口温度取回热器低压侧出口温度，进出口压力使用传入值。
+    # 压缩机：进口温度取回热器低压侧出口温度；进口压力使用上游扣减管道压降后的值。
     compressor_inlet_temp = regenerator_low_side_outlet_temp  # E12，℃
 
     # 根据进口温度和压力查询进口比焓、比熵。

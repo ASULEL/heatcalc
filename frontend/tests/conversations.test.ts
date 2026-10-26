@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import { useConversations } from '../src/composables/useConversations.ts'
+import type { ParameterField } from '../src/types.ts'
 
 interface PendingRequest {
   body: {
     message: string
     history: { role: string; content: string }[]
+    parameter_values?: Record<string, string | number>
   }
   signal: AbortSignal | null | undefined
   resolve: (response: Response) => void
@@ -253,4 +255,54 @@ test('后端 HTTP 错误显示失败提示，不写入空回复', async (t) => {
 
   assert.match(state.current.value!.messages[1]!.content, /请求失败/)
   assert.equal(state.loading.value, false)
+})
+
+test('保存参数表并提交填写值', async (t) => {
+  const requests = mockRequests(t)
+  const state = useConversations()
+  const fields: ParameterField[] = [
+    {
+      name: 'renewable_power',
+      label: '风电或光伏功率',
+      unit: 'kW',
+      group: '风光与电加热参数',
+      advanced: false,
+      value: null,
+      required: true,
+    },
+  ]
+
+  const firstSending = state.sendMessage('根据光伏功率计算蒸汽流量')
+  requests[0]!.resolve(Response.json({ response: '请填写参数', parameter_form: fields }))
+  await firstSending
+  assert.deepEqual(state.current.value!.messages[1]!.parameterForm, fields)
+
+  const secondSending = state.sendParameterValues(fields, { renewable_power: '8000' })
+  assert.deepEqual(requests[1]!.body.parameter_values, { renewable_power: '8000' })
+  requests[1]!.resolve(Response.json({ response: '参数已收到' }))
+  await secondSending
+  assert.match(state.current.value!.messages[2]!.content, /风电或光伏功率/)
+})
+
+test('提交表格显示单位时转换为工具单位', async (t) => {
+  const requests = mockRequests(t)
+  const state = useConversations()
+  const fields: ParameterField[] = [
+    {
+      name: 'charging_power',
+      label: '热泵输出热功率',
+      unit: 'MWt',
+      group: '热泵基础参数',
+      advanced: false,
+      value: 100,
+      required: true,
+      isDefault: true,
+      toToolFactor: 1000,
+    },
+  ]
+
+  const sending = state.sendParameterValues(fields, { charging_power: '100' })
+  assert.deepEqual(requests[0]!.body.parameter_values, { charging_power: 100000 })
+  requests[0]!.resolve(Response.json({ response: '参数已收到' }))
+  await sending
 })

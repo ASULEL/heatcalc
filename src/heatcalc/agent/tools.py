@@ -100,7 +100,7 @@ def calculate_steam_flow_from_renewable_power(
     :param renewable_conversion_efficiency: 从输入功率测点到加热器入口的总效率，
         大于 0 且不超过 1，使用小数，不包含电热效率
     :param rated_electrical_power: 电加热器额定电输入功率 (kW)，大于零
-    :param electrical_efficiency: 电热效率，大于 0 且不超过 1，使用小数
+    :param electrical_efficiency: 电加热器热效率，大于 0 且不超过 1，使用小数
     :param heat_exchange_efficiency: SGS 换热效率，大于 0 且不超过 1，使用小数
     :param storage_efficiency: 储热效率，大于 0 且不超过 1，使用小数
     :param operating_hours: 风电或光伏供电的充热时长 (h)，必须大于零
@@ -206,7 +206,7 @@ def calculate_heat_pump_cost(
     :param waste_heat_temp: 余热温度 (°C)
     :param steam_supply_hours: 供汽时长 (h)，必须大于零
     :param working_fluid: 循环介质的 CoolProp 名称，如 Air、Nitrogen
-    :param compressor_inlet_pressure: 压缩机进口压力 (kPa)
+    :param compressor_inlet_pressure: 兼容原字段 (kPa)，实际进口压力由回热器低压侧出口减去管道压降推导
     :param compressor_outlet_pressure: 压缩机出口压力 (kPa)
     :param compressor_isentropic_efficiency: 压缩机等熵效率，使用小数
     :param compressor_mechanical_loss: 压缩机机械损失功率 (kW)
@@ -339,7 +339,7 @@ def calculate_heat_pump_mass_flow(
     :param electricity_cost: 指定购电成本 (元)，允许为零
     :param steam_supply_hours: 供汽时长 (h)，必须大于零
     :param working_fluid: 循环介质的 CoolProp 名称，如 Air、Nitrogen
-    :param compressor_inlet_pressure: 压缩机进口压力 (kPa)
+    :param compressor_inlet_pressure: 兼容原字段 (kPa)，实际进口压力由回热器低压侧出口减去管道压降推导
     :param compressor_outlet_pressure: 压缩机出口压力 (kPa)
     :param compressor_isentropic_efficiency: 压缩机等熵效率，使用小数
     :param compressor_mechanical_loss: 压缩机机械损失功率 (kW)
@@ -463,7 +463,7 @@ def calculate_heat_pump_cop(
     :param salt_temp_low: 熔盐下限温度 (℃)
     :param charging_power: 热泵输出热功率 (kW)
 
-    :param compressor_inlet_pressure: 压缩机进口压力 (kPa)
+    :param compressor_inlet_pressure: 兼容原字段 (kPa)，实际进口压力由回热器低压侧出口减去管道压降推导
     :param compressor_outlet_pressure: 压缩机出口压力 (kPa)
     :param compressor_isentropic_efficiency: 压缩机等熵效率，取值 (0, 1]
     :param compressor_mechanical_loss: 压缩机机械损失功率 (kW)

@@ -1,5 +1,5 @@
 import { computed, ref, shallowReactive } from 'vue'
-import type { Conversation } from '../types'
+import type { Conversation, ParameterField } from '../types'
 
 export function useConversations() {
   const conversations = ref<Conversation[]>([])
@@ -49,7 +49,7 @@ export function useConversations() {
     }
   }
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, parameterValues?: Record<string, string | number>) {
     const message = text.trim()
     if (!message) return
     if (!current.value) createConversation()
@@ -73,7 +73,7 @@ export function useConversations() {
       const res = await fetch('http://127.0.0.1:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify({ message, history, parameter_values: parameterValues }),
         signal: controller.signal,
       })
       if (!res.ok) throw new Error(`请求失败：HTTP ${res.status}`)
@@ -86,6 +86,7 @@ export function useConversations() {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: data.response,
+        parameterForm: Array.isArray(data.parameter_form) ? data.parameter_form : undefined,
       })
     } catch (err) {
       if (!canAppendReply()) return
@@ -100,6 +101,20 @@ export function useConversations() {
     }
   }
 
+  async function sendParameterValues(fields: ParameterField[], values: Record<string, string>) {
+    const summary = fields
+      .map((field) => `${field.label}（${field.unit}）：${values[field.name] || '未填写'}`)
+      .join('\n')
+    const toolValues = Object.fromEntries(
+      fields.map((field) => {
+        const value = values[field.name]
+        const factor = field.toToolFactor || 1
+        return [field.name, value === '' ? value : factor === 1 ? value : Number(value) * factor]
+      }),
+    )
+    await sendMessage(`已提交参数：\n${summary}`, toolValues)
+  }
+
   createConversation()
 
   return {
@@ -112,5 +127,6 @@ export function useConversations() {
     renameConversation,
     deleteConversation,
     sendMessage,
+    sendParameterValues,
   }
 }

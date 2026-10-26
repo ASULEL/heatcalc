@@ -29,27 +29,27 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="border-t border-neutral-200 bg-white px-4 py-4">
+  <div class="bg-transparent px-4 pb-5 pt-3 sm:px-8">
     <div
-      class="mx-auto flex max-w-2xl items-end gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm focus-within:border-neutral-400"
+      class="mx-auto flex max-w-4xl items-end gap-3 rounded-3xl border border-blue-100 bg-white px-4 py-3 shadow-xl shadow-blue-100/50 focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-50"
     >
       <textarea
         v-model="text"
-        rows="1"
+        rows="2"
         placeholder="描述你的工况参数，或直接提问..."
-        class="flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] outline-none placeholder:text-neutral-400"
+        class="max-h-32 min-h-12 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-6 outline-none placeholder:text-slate-400"
         @keydown="handleKeydown"
       />
       <button
         type="button"
-        class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-700 disabled:opacity-40"
+        class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-lg text-white shadow-md shadow-blue-200 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="disabled || !text.trim()"
         @click="submit"
       >
-        ↑
+        ↗
       </button>
     </div>
-    <p class="mt-2 text-center text-xs text-neutral-400">
+    <p class="mt-2 text-center text-xs text-slate-400">
       Enter 发送，Shift + Enter 换行
     </p>
   </div>
