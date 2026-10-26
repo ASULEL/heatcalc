@@ -1,14 +1,11 @@
 from math import isfinite
 
+from heatcalc.cop import calculate_cop as calculate_cycle_cop
 from heatcalc.strategy import HeatSourceStrategy
 
 
 class HeatPumpStrategy(HeatSourceStrategy):
-    """通过余热温度查表获取 COP，组织热泵的正算和反算流程。"""
-
-    COP_TABLE: dict[float, float] = {
-        30.0: 1.3,
-    }
+    """复用循环 COP 计算函数，组织热泵的正算和反算流程。"""
 
     def __init__(
         self,
@@ -17,6 +14,9 @@ class HeatPumpStrategy(HeatSourceStrategy):
         storage_efficiency: float,
         salt_specific_heat: float,
         salt_temp_delta: float,
+        *,
+        salt_temp_low: float,
+        cop_parameters: dict,
     ) -> None:
         """
         :param waste_heat_temp: 余热温度 (°C)
@@ -24,6 +24,10 @@ class HeatPumpStrategy(HeatSourceStrategy):
         :param storage_efficiency: 储热效率
         :param salt_specific_heat: 熔盐比热容 (kJ/(kg·K))
         :param salt_temp_delta: 熔盐温差 (K)
+        :param salt_temp_low: 熔盐下限温度 (°C)
+        :param cop_parameters: COP 函数其余的介质和设备参数，名称与该函数一致；
+            压力和压降使用 kPa，温度和端差使用 °C，机械损失使用 kW，效率为小数。
+            不包含已单独提供的 waste_heat_temp、salt_temp_low 和运行时计算的 charging_power。
         """
         super().__init__(
             heat_exchange_efficiency,
@@ -32,6 +36,8 @@ class HeatPumpStrategy(HeatSourceStrategy):
             salt_temp_delta,
         )
         self.waste_heat_temp = waste_heat_temp
+        self.salt_temp_low = salt_temp_low
+        self.cop_parameters = cop_parameters
 
     def electrical_power(self, charging_power: float, cop: float) -> float:
         """使用已计算的供热 COP，将充热端热功率转换为输入电功率。
@@ -69,7 +75,7 @@ class HeatPumpStrategy(HeatSourceStrategy):
         :param electricity_price: 电价 (元/kWh)，允许为零
         :param steam_supply_hours: 供汽时长 (h)，必须大于零
         :return: 各阶段功率 (kW)、供热量和耗电量 (kWh)、购电成本 (元) 和 COP
-        :raises ValueError: 参数或效率无效、制汽焓差不为正，或余热温度未配置 COP
+        :raises ValueError: 参数或效率无效，或制汽焓差不为正
         """
         parameters = {
             "蒸汽质量流量": mass_flow,
@@ -85,7 +91,6 @@ class HeatPumpStrategy(HeatSourceStrategy):
         if steam_supply_hours <= 0:
             raise ValueError("供汽时长必须大于零")
         self._validate_efficiencies()
-        cop = self.calculate_cop()
 
         # 1. 蒸汽需求 → 制汽热功率，单位 kW
         water_to_steam_power = self.water_to_steam_power(
@@ -100,8 +105,12 @@ class HeatPumpStrategy(HeatSourceStrategy):
         heat_energy = supply_thermal_power * steam_supply_hours
         # 5. 总供热量 ÷ 谷电充热时长 → 热泵实际充热功率，单位 kW
         charging_power = heat_energy / operating_hours
-        # 6. 热泵热功率 → 输入电功率，使用已计算的 COP，单位 kW
-        electrical_power = self.electrical_power(charging_power, cop)
+        # 6. 用实际充热功率计算循环 COP，再换算输入电功率，单位 kW。
+        cop = self.calculate_cop(charging_power)
+        if charging_power == 0:
+            electrical_power = 0.0  # 零负荷时热泵停机。
+        else:
+            electrical_power = self.electrical_power(charging_power, cop)
         # 7. 电功率 × 谷电充热时长 → 耗电量，单位 kWh
         electricity_consumption = electrical_power * operating_hours
         # 8. 耗电量 → 购电成本，单位元
@@ -130,7 +139,8 @@ class HeatPumpStrategy(HeatSourceStrategy):
     ) -> dict[str, float]:
         """根据购电成本，逐级反算热泵能够供给的蒸汽质量流量。
 
-        充热功率按谷电时长折算，供汽功率按供汽时长折算，COP 按余热温度查表获取。
+        充热功率按谷电时长折算，供汽功率按供汽时长折算。
+        按循环功率关系扣除固定机械损失后反算充热功率，再计算实际工况的 COP。
 
         :param steam_pressure: 蒸汽压力 (MPa)
         :param steam_temp: 蒸汽温度 (°C)
@@ -141,7 +151,7 @@ class HeatPumpStrategy(HeatSourceStrategy):
         :param electricity_cost: 指定购电成本 (元)，允许为零
         :param steam_supply_hours: 供汽时长 (h)，必须大于零
         :return: 各阶段结果和蒸汽质量流量 mass_flow (kg/s)
-        :raises ValueError: 参数或效率无效、制汽焓差不为正，或余热温度未配置 COP
+        :raises ValueError: 参数或效率无效、制汽焓差不为正，或预算不足以覆盖机械损失
         """
         parameters = {
             "谷电充热时长": operating_hours,
@@ -162,14 +172,32 @@ class HeatPumpStrategy(HeatSourceStrategy):
         if electricity_cost < 0:
             raise ValueError("购电成本不能为负数")
         self._validate_efficiencies()
-        cop = self.calculate_cop()
 
         # 1. 购电成本 → 耗电量，单位 kWh
         electricity_consumption = electricity_cost / electricity_price
         # 2. 耗电量 → 输入电功率，单位 kW
         electrical_power = electricity_consumption / operating_hours
-        # 3. 输入电功率 → 充热端热功率，单位 kW
-        charging_power = electrical_power * cop
+        # 3. 输入电功率 → 充热端热功率，单位 kW。
+        if electrical_power == 0:
+            charging_power = 0.0
+            cop = 0.0  # 零预算时热泵停机。
+        else:
+            # 用 1 kW 热功率求单位供热的可变电功率系数，不作为实际运行负荷。
+            reference_cop = self.calculate_cop(charging_power=1.0)
+            electrical_loss = (
+                self.cop_parameters["compressor_mechanical_loss"]
+                + self.cop_parameters["expander_mechanical_loss"]
+            ) / (
+                self.cop_parameters["motor_efficiency"]
+                * self.cop_parameters["gearbox_efficiency"]
+            )
+            electrical_power_per_heat = 1.0 / reference_cop - electrical_loss
+            charging_power = (
+                electrical_power - electrical_loss
+            ) / electrical_power_per_heat
+            if charging_power < 0:
+                raise ValueError("购电预算不足以覆盖压缩机和膨胀机的机械损失")
+            cop = charging_power / electrical_power
         # 4. 热泵实际充热功率 × 谷电时长 → 总供热量，单位 kWh
         heat_energy = charging_power * operating_hours
         # 5. 总供热量 ÷ 供汽时长 → 供汽时段所需的热功率，单位 kW
@@ -197,22 +225,18 @@ class HeatPumpStrategy(HeatSourceStrategy):
             "mass_flow": float(mass_flow),
         }
 
-    def calculate_cop(self) -> float:
-        """根据余热温度查表获取当前供热工况下的 COP。"""
-        if not isfinite(self.waste_heat_temp):
-            raise ValueError("余热温度必须是有限数值")
+    def calculate_cop(self, charging_power: float) -> float:
+        """用实际充热功率 (kW) 和循环参数计算 COP，零负荷停机时返回 0。"""
+        if charging_power == 0:
+            return 0.0
 
-        cop = self.COP_TABLE.get(self.waste_heat_temp)
-
-        if cop is None:
-            raise ValueError(
-                f"暂未配置余热温度 {self.waste_heat_temp} °C 对应的 COP"
-            )
-
-        if not isfinite(cop) or cop <= 0:
-            raise ValueError("供热 COP 必须是大于零的有限数值")
-
-        return float(cop)
+        result = calculate_cycle_cop(
+            waste_heat_temp=self.waste_heat_temp,
+            salt_temp_low=self.salt_temp_low,
+            charging_power=charging_power,
+            **self.cop_parameters,
+        )
+        return float(result["cop"])
 
     def _validate_efficiencies(self) -> None:
         """统一检查热泵正反算使用的换热效率和储热效率。"""

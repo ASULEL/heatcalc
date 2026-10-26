@@ -2,6 +2,10 @@
 import { useConversations } from './composables/useConversations'
 import Sidebar from './components/Sidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
+import type { UserProfile } from './types'
+
+// 接入用户管理后，在这里替换为实际获取的用户信息。
+const currentUser: UserProfile = { displayName: '默认用户' }
 
 const {
   conversations,
@@ -19,6 +23,7 @@ const {
 <template>
   <div class="flex h-full">
     <Sidebar
+      :current-user="currentUser"
       :conversations="conversations"
       :current-id="currentId"
       @create="createConversation"

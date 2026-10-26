@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import type { Conversation } from '../types'
+import type { Conversation, UserProfile } from '../types'
 
 defineProps<{
+  currentUser: UserProfile
   conversations: Conversation[]
   currentId: string | null
 }>()
@@ -34,8 +35,21 @@ function finishRenaming(id: string) {
 </script>
 
 <template>
-  <div class="flex h-full w-64 flex-col border-r border-neutral-200 bg-neutral-50">
-    <div class="border-b border-neutral-200 px-4 py-4">
+  <div class="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
+    <section aria-label="当前用户" class="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-4 py-5">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800">
+        <svg aria-hidden="true" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+        </svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-xs leading-5 text-neutral-500">当前用户</p>
+        <p class="mt-1 truncate text-sm font-semibold leading-6 text-neutral-900" :title="currentUser.displayName">{{ currentUser.displayName }}</p>
+      </div>
+    </section>
+
+    <div class="shrink-0 border-b border-neutral-200 px-4 py-4">
       <button
         type="button"
         class="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
@@ -45,7 +59,7 @@ function finishRenaming(id: string) {
       </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-2">
+    <div class="min-h-0 flex-1 overflow-y-auto p-2">
       <div
         v-for="conv in conversations"
         :key="conv.id"

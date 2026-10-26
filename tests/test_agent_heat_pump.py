@@ -18,9 +18,32 @@ def tool_conditions():
         "heat_exchange_efficiency": 0.99,
         "storage_efficiency": 0.99,
         "salt_specific_heat": 1.5,
-        "salt_temp_high": 540,
-        "salt_temp_low": 300,
-        "waste_heat_temp": 30,
+        "salt_temp_high": 550,
+        "salt_temp_low": 310,
+        "waste_heat_temp": 400,
+        "working_fluid": "Air",
+        "compressor_inlet_pressure": 2700,
+        "compressor_outlet_pressure": 11500,
+        "compressor_isentropic_efficiency": 0.85,
+        "compressor_mechanical_loss": 0,
+        "compressor_to_heat_release_pressure_drop": 0,
+        "heat_release_temp_approach": 10,
+        "heat_release_pressure_drop": 200,
+        "heat_release_to_regenerator_pressure_drop": 0,
+        "regenerator_temp_approach": 20,
+        "regenerator_high_side_pressure_drop": 200,
+        "regenerator_low_side_pressure_drop": 200,
+        "regenerator_to_expander_pressure_drop": 0,
+        "expander_outlet_pressure": 2950,
+        "expander_isentropic_efficiency": 0.92,
+        "expander_mechanical_loss": 0,
+        "expander_to_heat_absorption_pressure_drop": 0,
+        "heat_absorption_temp_approach": 130,
+        "heat_absorption_pressure_drop": 50,
+        "heat_absorption_to_regenerator_pressure_drop": 0,
+        "regenerator_to_compressor_pressure_drop": 0,
+        "motor_efficiency": 0.98,
+        "gearbox_efficiency": 0.985,
     }
 
 
@@ -41,11 +64,11 @@ def test_registered_heat_pump_tools_round_trip_and_display_units(tool_conditions
 
     display = format_result_for_display(reverse)
     assert display["mass_flow"] == {"value": 100.0, "unit": "t/h"}
-    assert display["electrical_power"] == {"value": 177.37, "unit": "MWe"}
+    assert display["electrical_power"] == {"value": 132.5, "unit": "MWe"}
     assert display["heat_energy"] == {"value": 1844.69, "unit": "MWht"}
-    assert display["electricity_consumption"] == {"value": 1419.0, "unit": "MWhe"}
-    assert display["electricity_cost"] == {"value": 496648.57, "unit": "元"}
-    assert display["cop"] == {"value": 1.3, "unit": "无量纲"}
+    assert display["electricity_consumption"] == {"value": 1059.96, "unit": "MWhe"}
+    assert display["electricity_cost"] == {"value": 370987.48, "unit": "元"}
+    assert display["cop"] == {"value": 1.74, "unit": "无量纲"}
 
 
 @pytest.mark.parametrize(
@@ -78,7 +101,7 @@ def test_heat_pump_reverse_can_supply_original_power_to_storage_tool(tool_condit
         "salt_temp_low": 300,
     })
 
-    assert storage["salt_mass"] == pytest.approx(6148.982237560703)
+    assert storage["salt_mass"] == pytest.approx(8231.768888070852)
     assert format_result_for_display(storage) == {
-        "salt_mass": {"value": 6148.98, "unit": "t"},
+        "salt_mass": {"value": 8231.77, "unit": "t"},
     }

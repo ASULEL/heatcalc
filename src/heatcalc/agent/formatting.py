@@ -39,6 +39,12 @@ def format_result_for_display(data: dict, decimals: int = DISPLAY_DECIMALS) -> d
             "unit": "t/h",
         }
 
+    if "cycle_mass_flow" in data:
+        display_result["cycle_mass_flow"] = {
+            "value": round(data["cycle_mass_flow"], decimals),
+            "unit": "kg/s",
+        }
+
     # 储盐算法已经返回吨，仅作舍入。
     if "salt_mass" in data:
         display_result["salt_mass"] = {
