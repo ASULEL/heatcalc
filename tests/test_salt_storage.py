@@ -1,7 +1,7 @@
 import pytest
 
-from heatcalc.electric_heater import ElectricHeaterStrategy
-from heatcalc.salt_storage import calculate_salt_mass
+from heatcalc.heat_source.electric_heater import ElectricHeaterStrategy
+from heatcalc.thermal_storage.molten_salt import calculate_salt_mass
 
 
 def test_one_mwh_requires_ten_tonnes_of_salt():

@@ -1,4 +1,4 @@
-from heatcalc.electric_heater import ElectricHeaterStrategy
+from heatcalc.heat_source.electric_heater import ElectricHeaterStrategy
 
 heater = ElectricHeaterStrategy(
     electrical_efficiency=0.985,

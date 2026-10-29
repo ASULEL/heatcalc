@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from heatcalc.agent.tools import ALL_TOOLS
+from heatcalc.agent.tool import ALL_TOOLS
 from heatcalc.agent.formatting import format_result_for_display
 
 load_dotenv()

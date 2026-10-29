@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, watch, ref } from 'vue'
-import type { ChatMessage, ParameterField } from '../types'
+import type { ChatMessage, CostScheduleInputs, ParameterField } from '../types'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -8,25 +8,32 @@ const props = defineProps<{
   title: string
   messages: ChatMessage[]
   loading: boolean
+  focusedMessageId?: string | null
 }>()
 
 const emit = defineEmits<{
   send: [text: string]
-  submitParameters: [fields: ParameterField[], values: Record<string, string>]
+  submitParameters: [fields: ParameterField[], values: Record<string, string>, messageId: string]
+  submitCostParameters: [inputs: CostScheduleInputs, messageId: string]
 }>()
 
 const scrollArea = ref<HTMLDivElement | null>(null)
 const showToolList = ref(false)
 const homeText = ref('')
-
 const quickPrompts = [
   { icon: '⚡', title: '电加热购电成本', text: '根据蒸汽需求计算电加热器购电成本' },
   { icon: '♨️', title: '热泵购电成本', text: '根据蒸汽需求计算热泵购电成本' },
   { icon: '☀️', title: '风光制汽流量', text: '根据光伏或风电功率计算蒸汽流量' },
   { icon: '◈', title: '热泵 COP', text: '根据热泵循环参数计算 COP' },
+  { icon: '▦', title: '经济测算', text: '开始经济测算' },
 ]
 
 const availableTools = [
+  {
+    icon: '▦', title: '经济测算',
+    description: '按方案依次生成借款还本付息表和成本计算表',
+    prompt: '开始经济测算',
+  },
   {
     icon: '⚡',
     title: '电加热器购电成本',
@@ -91,13 +98,26 @@ function handleHomeKeydown(e: KeyboardEvent) {
   }
 }
 
-watch(
-  () => props.messages.length,
-  async () => {
-    await nextTick()
-    scrollArea.value?.scrollTo({ top: scrollArea.value.scrollHeight, behavior: 'smooth' })
-  },
-)
+function scrollToMessage(id: string) {
+  const area = scrollArea.value // 只滚动对话区域，保持顶部导航和输入框位置
+  const message = area?.querySelector<HTMLElement>(`[id="${id}"]`) // 本次需要阅读的消息
+  if (area && message) {
+    const top = area.scrollTop + message.getBoundingClientRect().top - area.getBoundingClientRect().top
+    area.scrollTo({ top, behavior: 'smooth' })
+  }
+}
+
+watch(() => props.messages.at(-1)?.id, async () => {
+  await nextTick()
+  const latest = props.messages.at(-1) // 新回复从开头阅读，避免跳过表头与参数说明
+  if (latest?.role === 'assistant') scrollToMessage(latest.id)
+  else scrollArea.value?.scrollTo({ top: scrollArea.value.scrollHeight, behavior: 'smooth' })
+})
+
+watch(() => props.focusedMessageId, async (id) => {
+  await nextTick()
+  if (id) scrollToMessage(id)
+}, { immediate: true })
 </script>
 
 <template>
@@ -107,7 +127,7 @@ watch(
         <div class="w-full max-w-5xl">
           <div class="mx-auto max-w-2xl text-center">
             <span class="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-1.5 text-xs font-semibold text-blue-600">✦ AI 工业热源助手</span>
-            <h2 class="mt-5 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">今天想完成什么热源计算？</h2>
+            <h2 class="mt-5 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">今天想完成什么计算？</h2>
             <p class="mt-3 text-sm leading-6 text-slate-500">描述你的工况、设备参数或预算，助手会自动整理需要填写的参数。</p>
           </div>
 
@@ -216,8 +236,11 @@ watch(
         <MessageBubble
           v-for="m in messages"
           :key="m.id"
+          :id="m.id"
           :message="m"
-          @submit-parameters="(fields, values) => emit('submitParameters', fields, values)"
+          :loading="loading"
+          @submit-parameters="(fields, values, messageId) => emit('submitParameters', fields, values, messageId)"
+          @submit-cost-parameters="(inputs, messageId) => emit('submitCostParameters', inputs, messageId)"
         />
 
         <div v-if="loading" class="mx-4 my-5 rounded-2xl border border-blue-100 bg-white px-5 py-4 shadow-sm sm:mx-6" role="status" aria-label="正在计算">

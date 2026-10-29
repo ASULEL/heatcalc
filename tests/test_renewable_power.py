@@ -1,7 +1,7 @@
 """直接调用风电或光伏功率计算蒸汽流量工具的示例。"""
 
 from heatcalc.agent.formatting import format_result_for_display
-from heatcalc.agent.tools import calculate_steam_flow_from_renewable_power
+from heatcalc.agent.tool import calculate_steam_flow_from_renewable_power
 
 
 def test_calculate_steam_flow_from_renewable_power():

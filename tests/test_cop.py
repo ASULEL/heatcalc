@@ -2,8 +2,8 @@
 
 import pytest
 
-import heatcalc.cop as cop_module
-from heatcalc.cop import calculate_cop
+import heatcalc.heat_source.cop as cop_module
+from heatcalc.heat_source.cop import calculate_cop
 
 
 @pytest.fixture

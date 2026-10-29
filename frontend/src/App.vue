@@ -3,11 +3,14 @@ import { ref } from 'vue'
 import { useConversations } from './composables/useConversations'
 import Sidebar from './components/Sidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
+import SchemePanel from './components/SchemePanel.vue'
 import type { ParameterField, UserProfile } from './types'
 
 // 接入用户管理后，在这里替换为实际获取的用户信息。
 const currentUser: UserProfile = { displayName: '默认用户' }
 const isDarkMode = ref(false)
+const activeView = ref<'chat' | 'schemes'>('chat') // 顶部当前页面
+const focusedMessageId = ref<string | null>(null) // 继续填写时定位到原方案步骤
 
 const {
   conversations,
@@ -20,10 +23,29 @@ const {
   deleteConversation,
   sendMessage,
   sendParameterValues,
+  sendCostValues,
+  startEconomicScheme,
 } = useConversations()
 
-function submitParameters(fields: ParameterField[], values: Record<string, string>) {
-  sendParameterValues(fields, values)
+function submitParameters(fields: ParameterField[], values: Record<string, string>, messageId: string) {
+  sendParameterValues(fields, values, messageId)
+}
+
+function startScheme() {
+  activeView.value = 'chat'
+  startEconomicScheme()
+}
+
+function send(text: string) {
+  if (text === '开始经济测算') startScheme()
+  else sendMessage(text)
+}
+
+function resumeScheme(schemeId: string) {
+  focusedMessageId.value = [...current.value!.messages].reverse().find(
+    message => message.economicStep?.schemeId === schemeId && !message.submitted,
+  )!.id
+  activeView.value = 'chat'
 }
 
 function toggleTheme() {
@@ -47,10 +69,10 @@ function toggleTheme() {
         </div>
       </div>
 
-      <nav aria-label="主导航" class="hidden items-center gap-1 rounded-full bg-slate-100 p-1 text-sm font-medium text-slate-500 md:flex">
-        <button type="button" class="rounded-full bg-blue-600 px-6 py-2 text-white shadow-md shadow-blue-200">对话</button>
-        <button type="button" class="rounded-full px-5 py-2 transition hover:bg-white hover:text-slate-800">方案 <span class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-orange-400 align-middle" /></button>
-        <button type="button" class="rounded-full px-5 py-2 transition hover:bg-white hover:text-slate-800">档案</button>
+      <nav aria-label="主导航" class="flex items-center gap-1 rounded-full bg-slate-100 p-1 text-sm font-medium text-slate-500">
+        <button type="button" :aria-pressed="activeView === 'chat'" class="rounded-full px-4 py-2" :class="activeView === 'chat' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'hover:bg-white'" @click="activeView = 'chat'">对话</button>
+        <button type="button" :aria-pressed="activeView === 'schemes'" class="rounded-full px-4 py-2" :class="activeView === 'schemes' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'hover:bg-white'" @click="activeView = 'schemes'">方案</button>
+        <button type="button" class="hidden rounded-full px-5 py-2 transition hover:bg-white hover:text-slate-800 lg:block">档案</button>
       </nav>
 
       <div class="flex items-center gap-2">
@@ -84,11 +106,22 @@ function toggleTheme() {
         @delete="deleteConversation"
       />
       <ChatWindow
+        v-show="activeView === 'chat'"
         :title="current?.title || '新对话'"
         :messages="current?.messages || []"
         :loading="loading"
-        @send="sendMessage"
+        :focused-message-id="focusedMessageId"
+        @send="send"
         @submit-parameters="submitParameters"
+        @submit-cost-parameters="sendCostValues"
+      />
+      <SchemePanel
+        v-show="activeView === 'schemes'"
+        :key="currentId || 'empty'"
+        :schemes="current?.scenario.economicSchemes || []"
+        :loading="loading"
+        @start="startScheme"
+        @resume="resumeScheme"
       />
     </div>
   </div>

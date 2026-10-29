@@ -22,9 +22,10 @@ def health_check():
 
 
 # 注册路由模块
-from heatcalc.backend.routers import chat
+from heatcalc.backend.routers import chat, tool
 
 app.include_router(chat.router)
+app.include_router(tool.router)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import pytest
 
-from heatcalc.pump_heater import HeatPumpStrategy
+from heatcalc.heat_source.heat_pump import HeatPumpStrategy
 
 
 @pytest.fixture

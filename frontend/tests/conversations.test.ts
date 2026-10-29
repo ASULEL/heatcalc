@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import { useConversations } from '../src/composables/useConversations.ts'
-import type { ParameterField } from '../src/types.ts'
+import type { CalculationResult, EconomicRequest, ParameterField } from '../src/types.ts'
+import { bankResult, economicLoanResult } from './fixtures.ts'
+import { costFields, costInputs, economicCostResult } from './cost-fixtures.ts'
 
 interface PendingRequest {
+  url: string
   body: {
-    message: string
-    history: { role: string; content: string }[]
+    message?: string
+    request?: EconomicRequest
+    history?: { role: string; content: string }[]
     parameter_values?: Record<string, string | number>
+    calculation_results?: CalculationResult[]
   }
   signal: AbortSignal | null | undefined
   resolve: (response: Response) => void
@@ -16,10 +21,11 @@ interface PendingRequest {
 
 function mockRequests(t: TestContext) {
   const requests: PendingRequest[] = []
-  t.mock.method(globalThis, 'fetch', (_url: unknown, init?: RequestInit) =>
+  t.mock.method(globalThis, 'fetch', (url: unknown, init?: RequestInit) =>
     new Promise<Response>((resolve, reject) => {
       requests.push({
-        body: JSON.parse(String(init?.body)),
+        url: String(url),
+        body: JSON.parse(String(init?.body || '{}')),
         signal: init?.signal,
         resolve,
         reject,
@@ -305,4 +311,112 @@ test('提交表格显示单位时转换为工具单位', async (t) => {
   assert.deepEqual(requests[0]!.body.parameter_values, { charging_power: 100000 })
   requests[0]!.resolve(Response.json({ response: '参数已收到' }))
   await sending
+})
+
+const loanFields: ParameterField[] = [{
+  name: 'static_investment', label: '静态投资', unit: '万元',
+  group: '计算参数', advanced: false, required: true, value: 34320,
+  toolName: 'calculate_economic_scheme', schemeStep: 'loan',
+}]
+
+test('方案入口先展示借款表单，成功后新增成本步骤并归入原对话', async (t) => {
+  const requests = mockRequests(t)
+  const state = useConversations()
+  const original = state.current.value!
+  const start = state.startEconomicScheme()
+  assert.match(requests[0]!.url, /calculate_economic_scheme\/parameters$/)
+  requests[0]!.resolve(Response.json({ response: '先填写借款参数', parameter_form: loanFields }))
+  await start
+  const source = original.messages[1]!
+  const schemeId = source.economicStep!.schemeId
+  const result = { ...economicLoanResult, scheme_id: schemeId }
+  const sending = state.sendParameterValues(loanFields, { static_investment: '34320' }, source.id)
+  assert.match(requests[1]!.url, /\/api\/tools\/calculate_economic_scheme$/)
+  assert.deepEqual(requests[1]!.body.request, {
+    step: 'loan', scheme_id: schemeId, inputs: { static_investment: '34320' },
+  })
+  state.createConversation()
+  requests[1]!.resolve(Response.json({
+    response: '请填写成本参数', calculation_results: [result], parameter_form: costFields,
+  }))
+  await sending
+  assert.deepEqual(state.current.value!.scenario.economicSchemes, [])
+  assert.equal(original.scenario.economicSchemes[0]!.stage, 'cost')
+  assert.deepEqual(original.scenario.calculationResults, [result])
+  assert.equal(source.content, '先填写借款参数')
+  assert.equal(source.submitted, true)
+  assert.deepEqual(source.submittedValues, { static_investment: '34320' })
+  const next = original.messages[3]!
+  assert.equal(next.economicStep!.schemeId, schemeId)
+  assert.deepEqual(next.economicStep!.loanResult, bankResult)
+  assert.equal(next.economicStep!.step, 'cost')
+
+  state.selectConversation(original.id)
+  const followUp = state.sendMessage('后面的表要用到当年利息这一列')
+  assert.deepEqual(requests[2]!.body.calculation_results, [result])
+  requests[2]!.resolve(Response.json({ response: '可以引用原始数据。' }))
+  await followUp
+})
+
+test('重新测算创建新方案，后续结果不改变历史消息或历史借款来源', async (t) => {
+  const requests = mockRequests(t)
+  const state = useConversations()
+  const firstSending = state.sendMessage('开始经济测算')
+  requests[0]!.resolve(Response.json({
+    response: '已生成借款表，继续填写成本', calculation_results: [economicLoanResult], parameter_form: costFields,
+  }))
+  await firstSending
+  const historical = state.current.value!.messages[1]!
+  const snapshot = JSON.stringify(historical)
+  const changed = {
+    ...economicLoanResult, scheme_id: 'scheme-2',
+    loan_result: { ...bankResult, inputs: { ...bankResult.inputs, static_investment: 50000 } },
+  }
+  const secondSending = state.sendMessage('重新经济测算')
+  requests[1]!.resolve(Response.json({
+    response: '新方案借款已完成', calculation_results: [changed], parameter_form: costFields,
+  }))
+  await secondSending
+  assert.equal(JSON.stringify(historical), snapshot)
+  assert.equal(historical.economicStep!.loanResult!.inputs.static_investment, 34320)
+  assert.equal(state.current.value!.scenario.economicSchemes.length, 2)
+  const costSending = state.sendCostValues(costInputs, historical.id)
+  assert.equal(requests[2]!.body.request!.scheme_id, 'scheme-1')
+  assert.equal(requests[2]!.body.request!.step, 'cost')
+  const request = requests[2]!.body.request!
+  if (request.step === 'cost') assert.equal(request.loan_result.inputs.static_investment, 34320)
+  requests[2]!.resolve(Response.json({ response: '完成', calculation_results: [economicCostResult] }))
+  await costSending
+  assert.equal(state.current.value!.scenario.economicSchemes[0]!.stage, 'completed')
+  assert.equal(state.current.value!.scenario.economicSchemes[1]!.stage, 'cost')
+  assert.deepEqual(historical.submittedCostInputs, costInputs)
+  assert.equal(historical.content, '已生成借款表，继续填写成本')
+  assert.equal(historical.economicStep!.loanResult!.inputs.static_investment, 34320)
+  assert.equal(state.current.value!.messages.at(-1)!.calculationResults![0]!.cost_result!.schedule[2]!.depreciation_cost, 1488.0811837168144)
+  const count = requests.length
+  await state.sendCostValues(costInputs, historical.id)
+  assert.equal(requests.length, count)
+})
+
+test('经济测算提交失败可以重试，成功才冻结历史输入', async (t) => {
+  const requests = mockRequests(t)
+  t.mock.method(console, 'error', () => {})
+  const state = useConversations()
+  const start = state.startEconomicScheme()
+  requests[0]!.resolve(Response.json({ response: '借款参数', parameter_form: loanFields }))
+  await start
+  const source = state.current.value!.messages[1]!
+  const failed = state.sendParameterValues(loanFields, { static_investment: '34320' }, source.id)
+  requests[1]!.resolve(Response.json({}, { status: 500 }))
+  await failed
+  assert.equal(source.submitted, undefined)
+  assert.equal(state.current.value!.scenario.economicSchemes[0]!.stage, 'loan')
+  const retry = state.sendParameterValues(loanFields, { static_investment: '34320' }, source.id)
+  requests[2]!.resolve(Response.json({
+    response: '借款完成', parameter_form: costFields,
+    calculation_results: [{ ...economicLoanResult, scheme_id: source.economicStep!.schemeId }],
+  }))
+  await retry
+  assert.equal(source.submitted, true)
+  assert.equal(state.current.value!.scenario.economicSchemes[0]!.stage, 'cost')
 })

@@ -1,6 +1,6 @@
 import pytest
 
-from heatcalc.electric_heater import ElectricHeaterStrategy
+from heatcalc.heat_source.electric_heater import ElectricHeaterStrategy
 
 
 @pytest.fixture

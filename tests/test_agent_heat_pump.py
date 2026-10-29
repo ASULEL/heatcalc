@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from heatcalc.agent.formatting import format_result_for_display
-from heatcalc.agent.tools import ALL_TOOLS
+from heatcalc.agent.tool import ALL_TOOLS
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ def test_registered_heat_pump_tools_round_trip_and_display_units(tool_conditions
     assert display["electrical_power"] == {"value": 132.5, "unit": "MWe"}
     assert display["heat_energy"] == {"value": 1844.69, "unit": "MWht"}
     assert display["electricity_consumption"] == {"value": 1059.96, "unit": "MWhe"}
-    assert display["electricity_cost"] == {"value": 370987.48, "unit": "元"}
+    assert display["electricity_cost"] == {"value": 370987.4813, "unit": "元"}
     assert display["cop"] == {"value": 1.74, "unit": "无量纲"}
 
 

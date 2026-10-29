@@ -1,4 +1,5 @@
 DISPLAY_DECIMALS = 2
+MONEY_DECIMALS = 4  # 金额展示精度，原始计算结果不舍入
 
 
 def format_result_for_display(data: dict, decimals: int = DISPLAY_DECIMALS) -> dict:
@@ -6,9 +7,27 @@ def format_result_for_display(data: dict, decimals: int = DISPLAY_DECIMALS) -> d
     将计算结果中实际包含的字段转换为工业场景常用单位展示格式。
 
     :param data: 正算、反算或储盐工具返回的结果 (kW、kWh、元、kg/s、吨及无量纲 COP)
-    :param decimals: 展示结果保留的小数位数，默认两位
+    :param decimals: 非金额结果的展示小数位数，默认两位；金额统一四位
     :return: 结构化的展示结果，每项包含 value 和 unit
     """
+    if "loan_result" in data:
+        return {
+            name: format_result_for_display(data[name], decimals)
+            for name in ("loan_result", "cost_result") if name in data
+        }
+
+    if "schedule" in data:
+        return {
+            "unit": data["unit"],
+            "summary": {
+                name: {
+                    "value": value if name == "repayment_end_year" else round(value, MONEY_DECIMALS),
+                    "unit": "年" if name == "repayment_end_year" else data["unit"],
+                }
+                for name, value in data["summary"].items()
+            },
+        }
+
     # 功率和电量从 kW、kWh 转换为 MW、MWh。
     scaled_units = {
         "water_to_steam_power": "MWt",
@@ -28,7 +47,7 @@ def format_result_for_display(data: dict, decimals: int = DISPLAY_DECIMALS) -> d
 
     if "electricity_cost" in data:
         display_result["electricity_cost"] = {
-            "value": round(data["electricity_cost"], decimals),
+            "value": round(data["electricity_cost"], MONEY_DECIMALS),
             "unit": "元",
         }
 

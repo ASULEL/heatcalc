@@ -1,7 +1,7 @@
 import pytest
 
 from heatcalc.agent.formatting import format_result_for_display
-from heatcalc.agent.tools import (
+from heatcalc.agent.tool import (
     ALL_TOOLS,
     calculate_electric_heater_cost,
     calculate_mass_flow,
@@ -77,7 +77,7 @@ def test_steam_tools_can_supply_charging_power_to_storage_tool(tool, demand):
     display = format_result_for_display(result)
     assert display["electrical_power"] == {"value": 78.03, "unit": "MWe"}
     assert display["electricity_cost"] == {
-        "value": 218491.75,
+        "value": 218491.7546,
         "unit": "元",
     }
     if tool is calculate_mass_flow:

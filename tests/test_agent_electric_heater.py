@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from heatcalc.agent.formatting import format_result_for_display
-from heatcalc.agent.tools import ALL_TOOLS, calculate_salt_mass
+from heatcalc.agent.tool import ALL_TOOLS, calculate_salt_mass
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_registered_tools_recover_flow_for_different_durations(tool_conditions):
     assert display["electrical_power"] == {"value": 234.1, "unit": "MWe"}
     assert display["heat_energy"] == {"value": 1844.69, "unit": "MWht"}
     assert display["electricity_consumption"] == {"value": 1872.79, "unit": "MWhe"}
-    assert display["electricity_cost"] == {"value": 655475.26, "unit": "元"}
+    assert display["electricity_cost"] == {"value": 655475.2639, "unit": "元"}
 
 
 @pytest.mark.parametrize(

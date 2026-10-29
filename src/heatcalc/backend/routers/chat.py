@@ -11,12 +11,14 @@ class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []  # [{"role": "user", "content": "..."}, ...]
     parameter_values: dict[str, Any] | None = None
+    calculation_results: list[dict[str, Any]] = Field(default_factory=list)  # 当前对话方案数据
 
 
 # 响应体模型
 class ChatResponse(BaseModel):
     response: str
     parameter_form: list[dict[str, Any]] = Field(default_factory=list)
+    calculation_results: list[dict[str, Any]] = Field(default_factory=list)  # 本轮生成的计算数据
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -39,11 +41,16 @@ async def chat_endpoint(req: ChatRequest):
             messages.append(AIMessage(content=msg["content"]))
 
     # 当前的 req.message 单独传入，agent_core 会将其追加到历史消息中。
-    reply_text, updated_messages, parameter_form = chat(
+    reply_text, updated_messages, parameter_form, calculation_results = chat(
         req.message,
         messages,
         parameter_values=req.parameter_values,
+        calculation_results=req.calculation_results,
     )
 
     # 3. 返回 AI 回复
-    return ChatResponse(response=reply_text, parameter_form=parameter_form)
+    return ChatResponse(
+        response=reply_text,
+        parameter_form=parameter_form,
+        calculation_results=calculation_results,
+    )
