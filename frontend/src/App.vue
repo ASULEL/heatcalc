@@ -11,6 +11,8 @@ const currentUser: UserProfile = { displayName: '默认用户' }
 const isDarkMode = ref(false)
 const activeView = ref<'chat' | 'schemes'>('chat') // 顶部当前页面
 const focusedMessageId = ref<string | null>(null) // 继续填写时定位到原方案步骤
+const exportingSchemeId = ref<string | null>(null)
+const exportError = ref<{ schemeId: string; message: string } | null>(null)
 
 const {
   conversations,
@@ -24,7 +26,12 @@ const {
   sendMessage,
   sendParameterValues,
   sendCostValues,
+  sendRevenueTaxValues,
+  sendIncomeTaxValues,
+  sendCashFlowValues,
+  exportScheme,
   startEconomicScheme,
+  startNewEconomicScheme,
 } = useConversations()
 
 function submitParameters(fields: ParameterField[], values: Record<string, string>, messageId: string) {
@@ -36,6 +43,11 @@ function startScheme() {
   startEconomicScheme()
 }
 
+function startNewScheme() {
+  activeView.value = 'chat'
+  startNewEconomicScheme()
+}
+
 function send(text: string) {
   if (text === '开始经济测算') startScheme()
   else sendMessage(text)
@@ -43,13 +55,26 @@ function send(text: string) {
 
 function resumeScheme(schemeId: string) {
   focusedMessageId.value = [...current.value!.messages].reverse().find(
-    message => message.economicStep?.schemeId === schemeId && !message.submitted,
+    message => message.economicStep?.schemeId === schemeId && !message.submitted && !message.superseded,
   )!.id
   activeView.value = 'chat'
 }
 
 function toggleTheme() {
   isDarkMode.value = !isDarkMode.value
+}
+
+async function downloadScheme(schemeId: string) {
+  exportingSchemeId.value = schemeId
+  exportError.value = null
+  try {
+    await exportScheme(schemeId)
+  } catch (error) {
+    console.error('导出方案失败:', error)
+    exportError.value = { schemeId, message: '导出失败，请确认后端已启动后重试。' }
+  } finally {
+    exportingSchemeId.value = null
+  }
 }
 </script>
 
@@ -111,17 +136,26 @@ function toggleTheme() {
         :messages="current?.messages || []"
         :loading="loading"
         :focused-message-id="focusedMessageId"
+        :exporting-scheme-id="exportingSchemeId"
+        :export-error="exportError"
         @send="send"
         @submit-parameters="submitParameters"
         @submit-cost-parameters="sendCostValues"
+        @submit-revenue-tax-parameters="sendRevenueTaxValues"
+        @submit-income-tax-parameters="sendIncomeTaxValues"
+        @submit-cash-flow-parameters="sendCashFlowValues"
+        @export="downloadScheme"
       />
       <SchemePanel
         v-show="activeView === 'schemes'"
         :key="currentId || 'empty'"
         :schemes="current?.scenario.economicSchemes || []"
         :loading="loading"
-        @start="startScheme"
+        :exporting-scheme-id="exportingSchemeId"
+        :export-error="exportError"
+        @start="startNewScheme"
         @resume="resumeScheme"
+        @export="downloadScheme"
       />
     </div>
   </div>

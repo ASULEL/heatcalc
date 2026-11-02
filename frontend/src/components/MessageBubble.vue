@@ -1,27 +1,67 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
-import type { ChatMessage, CostScheduleInputs, ParameterField } from '../types'
+import type { CashFlowInputs, ChatMessage, CostScheduleInputs, IncomeTaxInputs, ParameterField, RevenueTaxInputs } from '../types'
 import LoanScheduleTable from './LoanScheduleTable.vue'
 import CostScheduleForm from './CostScheduleForm.vue'
 import CostScheduleTable from './CostScheduleTable.vue'
+import RevenueTaxForm from './RevenueTaxForm.vue'
+import RevenueTaxTable from './RevenueTaxTable.vue'
+import IncomeTaxForm from './IncomeTaxForm.vue'
+import IncomeTaxTable from './IncomeTaxTable.vue'
+import CashFlowForm from './CashFlowForm.vue'
+import CashFlowTable from './CashFlowTable.vue'
 
 const props = defineProps<{
   message: ChatMessage
   loading?: boolean
+  exportingSchemeId?: string | null
+  exportError?: { schemeId: string; message: string } | null
 }>()
 
 const emit = defineEmits<{
   submitParameters: [fields: ParameterField[], values: Record<string, string>, messageId: string]
   submitCostParameters: [inputs: CostScheduleInputs, messageId: string]
+  submitRevenueTaxParameters: [inputs: RevenueTaxInputs, messageId: string]
+  submitIncomeTaxParameters: [inputs: IncomeTaxInputs, messageId: string]
+  submitCashFlowParameters: [inputs: CashFlowInputs, messageId: string]
+  export: [schemeId: string]
 }>()
 
 const parameterValues = ref<Record<string, string>>({})
 const defaultFieldNames = ref(new Set<string>())
-const costFields = computed(() => (props.message.parameterForm || []).map(field => ({
-  ...field,
-  value: props.message.submittedCostInputs?.[field.name as keyof CostScheduleInputs] ?? field.value,
-}))) // 提交后保留本次输入，重新打开历史消息也可回看
+const costFields = computed(() => (props.message.parameterForm || []).map(field => {
+  const saved = props.message.submittedCostInputs?.[field.name as keyof CostScheduleInputs]
+  return {
+    ...field,
+    value: saved == null ? field.value : typeof saved === 'number' ? saved / (field.toToolFactor ?? 1) : saved,
+  }
+})) // 提交后保留本次输入，重新打开历史消息也可回看
+const revenueTaxFields = computed(() => (props.message.parameterForm || []).map(field => {
+  const saved = props.message.submittedRevenueTaxInputs?.[field.name as keyof RevenueTaxInputs]
+  return {
+    ...field,
+    value: saved == null ? field.value : typeof saved === 'number' ? saved / (field.toToolFactor ?? 1) : saved,
+  }
+}))
+const incomeTaxFields = computed(() => (props.message.parameterForm || []).map(field => {
+  const saved = props.message.submittedIncomeTaxInputs?.[field.name as keyof IncomeTaxInputs]
+  return {
+    ...field,
+    value: saved == null ? field.value : typeof saved === 'number' ? saved / (field.toToolFactor ?? 1) : saved,
+  }
+}))
+const cashFlowFields = computed(() => (props.message.parameterForm || []).map(field => {
+  const saved = props.message.submittedCashFlowInputs?.[field.name as keyof CashFlowInputs]
+  return {
+    ...field,
+    value: saved == null ? field.value : typeof saved === 'number' ? saved / (field.toToolFactor ?? 1) : saved,
+  }
+}))
+const stepLabels = {
+  loan: '第1步：借款参数', cost: '第2步：成本参数', revenue_tax: '第3步：收入及税金参数',
+  income_tax: '第4步：所得税参数', cash_flow: '第5步：现金流量参数',
+}
 
 watch(
   () => props.message.parameterForm,
@@ -107,19 +147,59 @@ function selectDefaultValue(name: string, event: FocusEvent) {
       <div v-else v-html="renderedContent" />
 
       <p v-if="message.economicStep || message.calculationResults?.length" class="mt-3 text-xs text-blue-600">
-        {{ message.schemeName || '经济测算' }} · {{ message.economicStep?.step === 'loan' ? '第1步：借款参数' : message.economicStep?.step === 'cost' ? '第2步：成本参数' : '测算结果' }}
+        {{ message.schemeName || '经济测算' }} · {{ message.economicStep ? stepLabels[message.economicStep.step] : '测算结果' }}
         <span v-if="message.submitted" class="ml-2 text-slate-400">已提交，以下为当时的参数</span>
+        <span v-else-if="message.superseded" class="ml-2 text-slate-500">参数已更新，请使用最新表单</span>
       </p>
       <template v-for="(result, index) in message.calculationResults" :key="index">
         <LoanScheduleTable v-if="result.step === 'loan'" :result="result.loan_result" />
-        <CostScheduleTable v-else-if="result.cost_result" :result="result.cost_result" />
+        <CostScheduleTable v-else-if="result.step === 'cost' && result.cost_result" :result="result.cost_result" />
+        <template v-if="result.cash_flow_result">
+          <CashFlowTable
+            :result="result.cash_flow_result.capital"
+            :equity-ratio="result.cash_flow_result.inputs.equity_ratio"
+          />
+          <CashFlowTable :result="result.cash_flow_result.total_investment" />
+          <div class="not-prose mt-4">
+            <button
+              type="button"
+              :disabled="loading || !!exportingSchemeId"
+              class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+              @click="emit('export', result.scheme_id)"
+            >{{ exportingSchemeId === result.scheme_id ? '正在导出…' : '导出 Excel' }}</button>
+            <p class="mt-2 text-xs text-slate-500">下载该方案最新的全部测算表格。</p>
+            <p v-if="exportError?.schemeId === result.scheme_id" role="alert" class="mt-2 text-sm text-red-600">{{ exportError.message }}</p>
+          </div>
+        </template>
+        <IncomeTaxTable v-else-if="result.income_tax_result" :result="result.income_tax_result" />
+        <RevenueTaxTable v-else-if="result.revenue_tax_result" :result="result.revenue_tax_result" />
       </template>
 
+      <RevenueTaxForm
+        v-if="message.economicStep?.step === 'revenue_tax' && message.economicStep.loanResult && message.economicStep.costResult"
+        :fields="revenueTaxFields"
+        :loan-result="message.economicStep.loanResult"
+        :cost-result="message.economicStep.costResult"
+        :disabled="message.submitted || message.superseded || loading"
+        @submit="(inputs) => emit('submitRevenueTaxParameters', inputs, message.id)"
+      />
+      <IncomeTaxForm
+        v-else-if="message.economicStep?.step === 'income_tax'"
+        :fields="incomeTaxFields"
+        :disabled="message.submitted || message.superseded || loading"
+        @submit="(inputs) => emit('submitIncomeTaxParameters', inputs, message.id)"
+      />
+      <CashFlowForm
+        v-else-if="message.economicStep?.step === 'cash_flow'"
+        :fields="cashFlowFields"
+        :disabled="message.submitted || message.superseded || loading"
+        @submit="(inputs) => emit('submitCashFlowParameters', inputs, message.id)"
+      />
       <CostScheduleForm
-        v-if="message.economicStep?.step === 'cost' && message.economicStep.loanResult"
+        v-else-if="message.economicStep?.step === 'cost' && message.economicStep.loanResult"
         :fields="costFields"
         :loan-result="message.economicStep.loanResult"
-        :disabled="message.submitted || loading"
+        :disabled="message.submitted || message.superseded || loading"
         @submit="(inputs) => emit('submitCostParameters', inputs, message.id)"
       />
 
@@ -128,7 +208,7 @@ function selectDefaultValue(name: string, event: FocusEvent) {
         class="mt-4 space-y-3"
         @submit.prevent="submitParameters"
       >
-        <fieldset :disabled="message.submitted || loading" class="space-y-3">
+        <fieldset :disabled="message.submitted || message.superseded || loading" class="space-y-3">
           <p v-if="message.economicStep?.step === 'loan'" class="text-xs text-slate-500">
             金额单位为万元；利率和比例使用小数，例如 0.03 表示 3%，0.8 表示 80%。预填值可修改，提交后直接计算。
           </p>
@@ -145,7 +225,7 @@ function selectDefaultValue(name: string, event: FocusEvent) {
               <label v-for="field in group.fields" :key="field.name" class="block">
                 <span class="mb-1.5 flex items-center gap-2 text-sm text-neutral-700">
                   <span>{{ field.label }}</span>
-                  <span v-if="defaultFieldNames.has(field.name)" class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">Excel示例</span>
+                  <span v-if="defaultFieldNames.has(field.name)" class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">Excel默认值</span>
                 </span>
                 <span class="flex items-center gap-2">
                   <select

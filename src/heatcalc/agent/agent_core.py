@@ -3,11 +3,13 @@ import os
 from typing import Any
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from heatcalc.agent.tool import ALL_TOOLS
 from heatcalc.agent.formatting import DISPLAY_DECIMALS, MONEY_DECIMALS, format_result_for_display
-from heatcalc.agent.parameter_specs import build_parameter_form, build_economic_form
+from heatcalc.agent.parameter_specs import build_parameter_form, build_next_economic_form
+from heatcalc.agent.economic_revision import revise_loan_from_message
+from heatcalc.agent.economic_tool import ECONOMIC_STEP_MESSAGES
 
 load_dotenv()
 
@@ -25,10 +27,12 @@ def request_parameter_form(
 
 # 全局LLM实例（只初始化一次）
 llm = ChatOpenAI(
-    model="deepseek-v4.1-flash",
+    model="deepseek-flash",
     api_key=os.getenv("API_KEY"),
     base_url=os.getenv("API_BASE_URL"),
     temperature=0,
+    timeout=45,
+    max_retries=0,
 )
 llm_with_tools = llm.bind_tools([*ALL_TOOLS, request_parameter_form])
 
@@ -36,13 +40,22 @@ AGENT_RULES = SystemMessage(
     content=(
         "你是工业热源与经济测算助手，根据用户的目标选择计算工具或方案。"
         "经济测算统一使用 calculate_economic_scheme，不存在独立借款或成本工具。"
-        "用户要求借款表、成本表或经济测算时，都进入经济测算方案。"
+        "用户要求借款表、成本表、收入及税金表、所得税表、现金流量表或经济测算时，都进入经济测算方案。"
         "新方案先 request_parameter_form，tool_name 为 calculate_economic_scheme。"
         "known_values 只填用户已提供的借款参数，不得自行使用示例值开始计算。"
-        "方案先 loan 步骤计算借款表，再 cost 步骤计算成本表。"
+        "方案先 loan 步骤计算借款表，再 cost 步骤计算成本表，再 revenue_tax 步骤计算收入及税金表，再 income_tax 步骤计算所得税表，最后 cash_flow 步骤计算资本金和全投资现金流量表。"
         "loan 步骤的 inputs 必须包含全部借款参数；未提供方案编号时工具会创建新编号。"
         "用户要求重新开始测算时，创建新方案并省略 scheme_id，保留旧方案数据。"
         "cost 步骤必须使用已保存方案的 scheme_id 与 loan_result，不得编造或重新计算来源。"
+        "revenue_tax 步骤必须引用同一方案保存的 loan_result 和 cost_result，缺少税金参数时使用成本结果下方的税金表单。"
+        "income_tax 步骤必须引用同一方案保存的 cost_result 和 revenue_tax_result，所得税率缺失时使用收入税金结果下方的所得税表单。"
+        "所得税表的营业收入取不含税收入合计，附加税取城建及教育附加，总成本取成本表；亏损年度不缴税并结转以后年度弥补。"
+        "cash_flow 步骤必须引用同一方案前四张表，资本金比例缺失时使用所得税结果下方的现金流表单。"
+        "资本金表只投入静态投资乘资本金比例，全投资表投入静态投资的100%；两张表按第1年80%、第2年20%分年投入。"
+        "全投资表没有借款本金和利息；回收固定资产余值只在最后一个运营年计入。"
+        "收入及税金表销售蒸汽并计入碳收益，购电进项税读取同年成本表不含税电费，不能把进项税理解为进水。"
+        "收入金额口径、除税率、合计销项税率、购电进项税率、建设期抵扣比例及附加税系数均以提交参数为准。"
+        "建设期抵扣按剩余额度逐年扣减，税额由工具计算，不得自行估算或把成本步骤当作方案完成。"
         "用户要继续成本步骤但未提供完整参数时，提示使用该方案借款结果下方的成本表单。"
         "不得为了展示成本参数另行请求新方案的借款表单。"
         "借款金额为万元，利率和比例为小数，计算年限以用户提交值为准。"
@@ -103,6 +116,15 @@ def chat(
     :param calculation_results: 当前对话方案已保存的计算数据
     :return: (agent回复文本, 更新后的messages列表, 前端参数表, 本轮计算结果)
     """
+    calculation_results = list({
+        result["scheme_id"]: result for result in calculation_results or []
+    }.values())
+    revision = revise_loan_from_message(user_input, calculation_results)
+    if revision is not None:
+        reply, parameter_form, results = revision
+        messages.extend([HumanMessage(content=user_input), AIMessage(content=reply)])
+        return reply, messages, parameter_form, results
+
     if parameter_values:
         user_input = (
             f"{user_input}\n"
@@ -160,8 +182,7 @@ def chat(
                     "tool_name": tool_func.name,
                     **raw_result,
                 })
-                if raw_result["step"] == "loan":
-                    parameter_form = build_economic_form("cost")
+                parameter_form = build_next_economic_form(raw_result)
 
             tool_message = ToolMessage(
                 content=json.dumps(
@@ -171,5 +192,7 @@ def chat(
                 tool_call_id=tool_call['id']
             )
             messages.append(tool_message)
+            if tool_func.name == "calculate_economic_scheme":
+                return ECONOMIC_STEP_MESSAGES[raw_result["step"]], messages, parameter_form, new_calculation_results
 
     return response.content, messages, parameter_form, new_calculation_results

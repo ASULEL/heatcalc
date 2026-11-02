@@ -11,13 +11,13 @@ const summaryFields = [ // 汇总卡片及中文含义，金额单位由结果�
   { name: 'total_interest', label: '全周期利息' },
 ]
 const columns: { name: keyof LoanScheduleRow; label: string }[] = [ // 年度金额列
-  { name: 'beginning_balance', label: '年初贷款余额' },
+  { name: 'beginning_balance', label: '年初借款余额' },
   { name: 'new_borrowing', label: '当年新增贷款' },
   { name: 'principal_repayment', label: '当年偿还本金' },
   { name: 'interest_expense', label: '当年利息' },
   { name: 'capitalized_interest', label: '资本化利息' },
   { name: 'cash_interest', label: '现金支付利息' },
-  { name: 'ending_balance', label: '年末贷款余额' },
+  { name: 'ending_balance', label: '年末借款余额' },
 ]
 
 </script>

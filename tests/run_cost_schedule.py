@@ -16,19 +16,23 @@ def main() -> None:
     loan_result = calculate_loan_schedule(**loan_inputs)  # 原始借款结果
     inputs = {  # 成本输入，所有金额为万元，年度列表从项目第1年开始
         "loan_schedule": loan_result,
-        "equipment_total_cost": 26400.0,  # 设备总成本，万元
-        "depreciation_years": 20,  # 折旧年限，年
+        "operating_years": 25,  # 成本表计列费用的运营年数
+        "depreciation_years": 15,  # 折旧年限，年
+        "construction_credit_ratio": 0.10,  # 建设期可抵扣税额占静态投资比例
+        "depreciable_ratio": 0.95,  # 扣除残值后的可折旧比例
+        "insurance_rate": 0.0035,  # 保险费率
+        "insurance_divisor": 1.06,  # 保险费除税系数
+        "tax_divisor": 1.13,  # 电费及维修费的含税换算系数
         "maintenance_ratio_periods": [  # 可修改的维修费区间
             {"start_year": 3, "end_year": 7, "ratio": 0.003},
             {"start_year": 8, "end_year": 12, "ratio": 0.005},
             {"start_year": 13, "end_year": 17, "ratio": 0.007},
             {"start_year": 18, "end_year": 22, "ratio": 0.009},
             {"start_year": 23, "end_year": 27, "ratio": 0.011},
-            {"start_year": 28, "end_year": 30, "ratio": 0.013},
         ],
-        "total_electricity_by_year": [0.0] * 2 + [2390.4133] * 28,  # 含税电费
+        "total_electricity_by_year": [0.0] * 2 + [17651.8226] * 25 + [0.0] * 3,  # 含税电费
         "water_cost_by_year": [0.0] * 30,  # 水费
-        "labor_cost_by_year": [0.0] * 2 + [216.0] * 28,  # 人工费
+        "labor_cost_by_year": [0.0] * 30,  # 人工费
         "amortization_expense_by_year": [0.0] * 30,  # 摊销费，暂手动输入
         "working_capital_loan_interest_by_year": [0.0] * 30,  # 流动资金利息，暂手动输入
     }

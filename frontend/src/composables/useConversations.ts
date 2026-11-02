@@ -1,8 +1,8 @@
 import { computed, ref, shallowReactive } from 'vue'
 import { formatMoney } from '../formatting.ts'
 import type {
-  CalculationResult, ChatMessage, Conversation, CostScheduleInputs,
-  EconomicRequest, ParameterField,
+  CalculationResult, CashFlowInputs, ChatMessage, Conversation, CostScheduleInputs,
+  EconomicRequest, IncomeTaxInputs, ParameterField, RevenueTaxInputs,
 } from '../types'
 
 interface RequestOptions {
@@ -11,7 +11,12 @@ interface RequestOptions {
   sourceMessage?: ChatMessage // 提交来源，不依赖当前最新方案
   parameterSnapshot?: Record<string, string> // 借款输入快照
   costSnapshot?: CostScheduleInputs // 成本输入快照
+  revenueTaxSnapshot?: RevenueTaxInputs
+  incomeTaxSnapshot?: IncomeTaxInputs
+  cashFlowSnapshot?: CashFlowInputs
 }
+
+const stepOrder = { loan: 0, cost: 1, revenue_tax: 2, income_tax: 3, cash_flow: 4 }
 
 export function useConversations() {
   const conversations = ref<Conversation[]>([])
@@ -66,26 +71,74 @@ export function useConversations() {
       parameterForm: fields.length ? fields : undefined, calculationResults: results,
     }
 
-    conversation.scenario.calculationResults.push(...results)
     for (const result of results) {
+      const saved = conversation.scenario.calculationResults
+      const index = saved.findIndex(item => item.scheme_id === result.scheme_id)
+      if (index === -1) saved.push(result)
+      else saved[index] = result
+
+      for (const previous of conversation.messages) {
+        const context = previous.economicStep
+        if (context?.schemeId === result.scheme_id && !previous.submitted && stepOrder[context.step] >= stepOrder[result.step]) {
+          previous.superseded = true
+        }
+      }
+
       let scheme = schemes.find(item => item.id === result.scheme_id)
       if (!scheme) {
         scheme = { id: result.scheme_id, name: `经济测算 ${schemes.length + 1}`, stage: 'loan' }
         schemes.push(scheme)
       }
       scheme.loanResult = structuredClone(result.loan_result)
-      scheme.stage = result.step === 'loan' ? 'cost' : 'completed'
+      scheme.stage = result.step === 'loan' ? 'cost'
+        : result.step === 'cost' ? 'revenue_tax'
+          : result.step === 'revenue_tax' ? 'income_tax'
+            : result.step === 'income_tax' ? 'cash_flow' : 'completed'
+      if (result.step === 'loan') {
+        delete scheme.costResult
+        delete scheme.revenueTaxResult
+        delete scheme.incomeTaxResult
+        delete scheme.cashFlowResult
+      } else if (result.step === 'cost') {
+        delete scheme.revenueTaxResult
+        delete scheme.incomeTaxResult
+        delete scheme.cashFlowResult
+      } else if (result.step === 'revenue_tax') {
+        delete scheme.incomeTaxResult
+        delete scheme.cashFlowResult
+      } else if (result.step === 'income_tax') delete scheme.cashFlowResult
       if (result.cost_result) scheme.costResult = structuredClone(result.cost_result)
+      if (result.revenue_tax_result) scheme.revenueTaxResult = structuredClone(result.revenue_tax_result)
+      if (result.income_tax_result) scheme.incomeTaxResult = structuredClone(result.income_tax_result)
+      if (result.cash_flow_result) scheme.cashFlowResult = structuredClone(result.cash_flow_result)
       message.schemeName = scheme.name
     }
 
     if (fields[0]?.toolName === 'calculate_economic_scheme') {
-      const result = results.at(-1) // 成本表单只绑定本条回复中的借款结果
+      const result = results.at(-1) // 后续表单只绑定本条回复保存的方案来源
       if (fields[0].schemeStep === 'cost' && result) {
         message.economicStep = {
           schemeId: result.scheme_id, step: 'cost', loanResult: structuredClone(result.loan_result),
         }
-      } else {
+      } else if (fields[0].schemeStep === 'revenue_tax' && result?.cost_result) {
+        message.economicStep = {
+          schemeId: result.scheme_id, step: 'revenue_tax',
+          loanResult: structuredClone(result.loan_result), costResult: structuredClone(result.cost_result),
+        }
+      } else if (fields[0].schemeStep === 'income_tax' && result?.revenue_tax_result) {
+        message.economicStep = {
+          schemeId: result.scheme_id, step: 'income_tax',
+          loanResult: structuredClone(result.loan_result), costResult: structuredClone(result.cost_result!),
+          revenueTaxResult: structuredClone(result.revenue_tax_result),
+        }
+      } else if (fields[0].schemeStep === 'cash_flow' && result?.income_tax_result) {
+        message.economicStep = {
+          schemeId: result.scheme_id, step: 'cash_flow',
+          loanResult: structuredClone(result.loan_result), costResult: structuredClone(result.cost_result!),
+          revenueTaxResult: structuredClone(result.revenue_tax_result!),
+          incomeTaxResult: structuredClone(result.income_tax_result),
+        }
+      } else if (fields[0].schemeStep === 'loan') {
         const id = crypto.randomUUID()
         const name = `经济测算 ${schemes.length + 1}`
         schemes.push({ id, name, stage: 'loan' })
@@ -98,7 +151,7 @@ export function useConversations() {
 
   async function sendMessage(text: string, parameterValues?: object, options: RequestOptions = {}) {
     const message = text.trim()
-    if (!message || options.sourceMessage?.submitted) return
+    if (!message || options.sourceMessage?.submitted || options.sourceMessage?.superseded) return
     if (!current.value) createConversation()
     const conversation = current.value // 固定请求发起时的对话
     if (!conversation || pendingRequests.has(conversation.id)) return
@@ -118,10 +171,13 @@ export function useConversations() {
       const url = options.startScheme
         ? '/api/tools/calculate_economic_scheme/parameters'
         : options.economicRequest ? '/api/tools/calculate_economic_scheme' : '/api/chat'
+      const savedSchemes = conversation.scenario.calculationResults.map(result => ({
+        ...result,
+        scheme_name: conversation.scenario.economicSchemes.find(scheme => scheme.id === result.scheme_id)!.name,
+      }))
       const body = options.economicRequest ? { request: options.economicRequest } : {
         message, history, parameter_values: parameterValues,
-        calculation_results: conversation.scenario.calculationResults.length
-          ? conversation.scenario.calculationResults : undefined,
+        calculation_results: savedSchemes.length ? savedSchemes : undefined,
       }
       const res = await fetch(`http://127.0.0.1:8000${url}`, {
         method: options.startScheme ? 'GET' : 'POST',
@@ -129,7 +185,11 @@ export function useConversations() {
         body: options.startScheme ? undefined : JSON.stringify(body),
         signal: controller.signal,
       })
-      if (!res.ok) throw new Error(`请求失败：HTTP ${res.status}`)
+      if (!res.ok) {
+        const problem = await res.json().catch(() => null)
+        const detail = typeof problem?.detail === 'string' ? `：${problem.detail}` : ''
+        throw new Error(`请求失败：HTTP ${res.status}${detail}`)
+      }
       const data = await res.json()
       if (typeof data.response !== 'string') throw new Error('回复格式无效')
       if (!canAppendReply()) return
@@ -139,13 +199,17 @@ export function useConversations() {
         options.sourceMessage.submitted = true
         options.sourceMessage.submittedValues = options.parameterSnapshot
         options.sourceMessage.submittedCostInputs = options.costSnapshot
+        options.sourceMessage.submittedRevenueTaxInputs = options.revenueTaxSnapshot
+        options.sourceMessage.submittedIncomeTaxInputs = options.incomeTaxSnapshot
+        options.sourceMessage.submittedCashFlowInputs = options.cashFlowSnapshot
       }
       appendReply(conversation, data)
     } catch (err) {
       if (!canAppendReply()) return
       console.error('发送消息失败:', err)
       conversation.messages.push({
-        id: crypto.randomUUID(), role: 'assistant', content: '抱歉，请求失败，请稍后重试。',
+        id: crypto.randomUUID(), role: 'assistant',
+        content: err instanceof Error && err.message.startsWith('请求失败') ? err.message : '请求失败，请稍后重试。',
       })
     } finally {
       pendingRequests.delete(conversation.id)
@@ -154,6 +218,11 @@ export function useConversations() {
 
   function startEconomicScheme() {
     return sendMessage('开始经济测算', undefined, { startScheme: true })
+  }
+
+  function startNewEconomicScheme() {
+    createConversation()
+    return startEconomicScheme()
   }
 
   async function sendParameterValues(
@@ -182,7 +251,7 @@ export function useConversations() {
     const source = current.value!.messages.find(message => message.id === messageId)!
     const context = source.economicStep! // 由该消息保存的方案编号及借款表
     await sendMessage(
-      `已提交成本参数：设备总成本 ${formatMoney(inputs.equipment_total_cost)} 万元，折旧年限 ${inputs.depreciation_years} 年。`,
+      `已提交成本参数：运营 ${inputs.operating_years} 年，折旧 ${inputs.depreciation_years} 年。`,
       undefined,
       {
         economicRequest: {
@@ -193,9 +262,90 @@ export function useConversations() {
     )
   }
 
+  async function sendRevenueTaxValues(inputs: RevenueTaxInputs, messageId: string) {
+    const source = current.value!.messages.find(message => message.id === messageId)!
+    const context = source.economicStep!
+    await sendMessage(
+      `已提交收入及税金参数：运营期 ${inputs.operating_years} 年，收入为${inputs.income_amount_basis === 'tax_inclusive' ? '含税' : '不含税'}金额，销项税率 ${formatMoney(inputs.output_vat_rate * 100)}%。`,
+      undefined,
+      {
+        economicRequest: {
+          step: 'revenue_tax', scheme_id: context.schemeId,
+          loan_result: context.loanResult!, cost_result: context.costResult!, inputs,
+        },
+        sourceMessage: source, revenueTaxSnapshot: structuredClone(inputs),
+      },
+    )
+  }
+
+  async function sendIncomeTaxValues(inputs: IncomeTaxInputs, messageId: string) {
+    const source = current.value!.messages.find(message => message.id === messageId)!
+    const context = source.economicStep!
+    await sendMessage(
+      `已提交所得税参数：所得税率 ${formatMoney(inputs.income_tax_rate * 100)}%。`,
+      undefined,
+      {
+        economicRequest: {
+          step: 'income_tax', scheme_id: context.schemeId,
+          loan_result: context.loanResult!, cost_result: context.costResult!,
+          revenue_tax_result: context.revenueTaxResult!, inputs,
+        },
+        sourceMessage: source, incomeTaxSnapshot: structuredClone(inputs),
+      },
+    )
+  }
+
+  async function sendCashFlowValues(inputs: CashFlowInputs, messageId: string) {
+    const source = current.value!.messages.find(message => message.id === messageId)!
+    const context = source.economicStep!
+    await sendMessage(
+      `已提交现金流量参数：资本金比例 ${formatMoney(inputs.equity_ratio * 100)}%。`,
+      undefined,
+      {
+        economicRequest: {
+          step: 'cash_flow', scheme_id: context.schemeId,
+          loan_result: context.loanResult!, cost_result: context.costResult!,
+          revenue_tax_result: context.revenueTaxResult!, income_tax_result: context.incomeTaxResult!,
+          inputs,
+        },
+        sourceMessage: source, cashFlowSnapshot: structuredClone(inputs),
+      },
+    )
+  }
+
+  async function exportScheme(schemeId: string) {
+    const scheme = current.value?.scenario.economicSchemes.find(item => item.id === schemeId)
+    if (!scheme?.cashFlowResult) return
+    const response = await fetch('http://127.0.0.1:8000/api/tools/calculate_economic_scheme/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scheme_name: scheme.name,
+        loan_result: scheme.loanResult,
+        cost_result: scheme.costResult,
+        revenue_tax_result: scheme.revenueTaxResult,
+        income_tax_result: scheme.incomeTaxResult,
+        cash_flow_result: scheme.cashFlowResult,
+      }),
+    })
+    if (!response.ok) throw new Error(`导出失败：HTTP ${response.status}`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `经济测算_${scheme.name}_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // 下载由浏览器异步接管，稍后释放，避免链接在文件读取前失效。
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   createConversation()
   return {
     conversations, currentId, current, loading, createConversation, selectConversation,
-    renameConversation, deleteConversation, sendMessage, sendParameterValues, sendCostValues, startEconomicScheme,
+    renameConversation, deleteConversation, sendMessage, sendParameterValues, sendCostValues,
+    sendRevenueTaxValues, sendIncomeTaxValues, sendCashFlowValues, exportScheme,
+    startEconomicScheme, startNewEconomicScheme,
   }
 }

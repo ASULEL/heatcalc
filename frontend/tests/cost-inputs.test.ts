@@ -17,18 +17,22 @@ test('成本输入沿用借款表年份，维修比例可分段，年度输入�
         { start_year: 13, end_year: 17, ratio: 0.007 },
         { start_year: 18, end_year: 22, ratio: 0.009 },
         { start_year: 23, end_year: 27, ratio: 0.011 },
-        { start_year: 28, end_year: 30, ratio: 0.013 },
       ])
       state.annualRows.value[2]!.total_electricity_by_year = '2390.123456789'
-      state.depreciationYears.value = 15
+      state.values.value.depreciation_years = '15'
       state.periods.value[0]!.ratio = 0.004
       const inputs = state.buildInputs()
       assert.equal(state.loan.value.schedule[2]!.interest_expense, loan.schedule[2]!.interest_expense)
       assert.equal(inputs.total_electricity_by_year[2], 2390.123456789)
       assert.equal(inputs.depreciation_years, 15)
+      assert.equal(inputs.operating_years, 25)
+      assert.equal(inputs.construction_credit_ratio, 0.1)
+      assert.equal(inputs.depreciable_ratio, 0.95)
+      assert.equal(inputs.insurance_rate, 0.0035)
       assert.equal(inputs.maintenance_ratio_periods[0]!.ratio, 0.004)
       assert.deepEqual(inputs.water_cost_by_year, Array(30).fill(0))
       assert.deepEqual(inputs.total_electricity_by_year.slice(0, 2), [0, 0])
+      assert.deepEqual(inputs.total_electricity_by_year.slice(27), [0, 0, 0])
       assert.equal(inputs.amortization_expense_by_year.length, 30)
     })
   } finally {
@@ -46,7 +50,8 @@ test('不同方案各自绑定借款来源，批量填写只影响本方案运�
     second.annualRows.value[4]!.labor_cost_by_year = 300
     second.applyToOperatingYears(second.annualRows.value[4]!)
     assert.deepEqual(second.buildInputs().labor_cost_by_year, [...Array(4).fill(0), ...Array(8).fill(300)])
-    assert.equal(first.buildInputs().labor_cost_by_year[2], 216)
+    assert.equal(second.buildInputs().operating_years, 8)
+    assert.equal(first.buildInputs().labor_cost_by_year[2], 0)
     assert.equal(first.annualRows.value.length, 30)
     assert.equal(second.annualRows.value.length, 12)
     await nextTick()

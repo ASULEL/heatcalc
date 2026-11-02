@@ -8,17 +8,17 @@ def test_default_inputs_match_excel_loan_schedule():
 
     assert result["unit"] == "万元"
     assert len(result["schedule"]) == 30
-    assert result["summary"]["loan_amount"] == pytest.approx(27456)
+    assert result["summary"]["loan_amount"] == pytest.approx(21321.17645)
     assert result["summary"]["construction_interest_total"] == pytest.approx(
-        998.30016
+        796.87683770
     )
     assert result["summary"]["operating_initial_balance"] == pytest.approx(
-        28454.30016
+        22118.05328770
     )
-    assert result["summary"]["annual_principal"] == pytest.approx(1896.953344)
-    assert result["summary"]["total_interest"] == pytest.approx(7827.3321984)
+    assert result["summary"]["annual_principal"] == pytest.approx(1474.53688585)
+    assert result["summary"]["total_interest"] == pytest.approx(5839.79298730)
     assert result["summary"]["total_investment_with_interest"] == pytest.approx(
-        35318.30016
+        31255.70033770
     )
     assert result["summary"]["repayment_end_year"] == 17
     assert result["summary"]["final_ending_balance"] == pytest.approx(0)
@@ -32,23 +32,23 @@ def test_schedule_rows_match_excel_formulas():
     third_year = rows[2]  # 第3年明细
     final_year = rows[16]  # 还本结束年份明细
 
-    assert first_year["new_borrowing"] == pytest.approx(21964.8)
-    assert first_year["interest_expense"] == pytest.approx(329.472)
-    assert first_year["ending_balance"] == pytest.approx(22294.272)
+    assert first_year["new_borrowing"] == pytest.approx(17056.94116)
+    assert first_year["interest_expense"] == pytest.approx(243.06141153)
+    assert first_year["ending_balance"] == pytest.approx(17300.00257153)
 
-    assert second_year["new_borrowing"] == pytest.approx(0)
-    assert second_year["interest_expense"] == pytest.approx(668.82816)
-    assert second_year["ending_balance"] == pytest.approx(22963.10016)
+    assert second_year["new_borrowing"] == pytest.approx(4264.23529)
+    assert second_year["interest_expense"] == pytest.approx(553.81542617)
+    assert second_year["ending_balance"] == pytest.approx(22118.05328770)
 
-    assert third_year["new_borrowing"] == pytest.approx(5491.2)
-    assert third_year["principal_repayment"] == pytest.approx(1896.953344)
-    assert third_year["interest_expense"] == pytest.approx(853.6290048)
-    assert third_year["ending_balance"] == pytest.approx(26557.346816)
+    assert third_year["new_borrowing"] == 0
+    assert third_year["principal_repayment"] == pytest.approx(1474.53688585)
+    assert third_year["interest_expense"] == pytest.approx(630.36451870)
+    assert third_year["ending_balance"] == pytest.approx(20643.51640185)
 
     for row in rows[2:17]:
-        assert row["principal_repayment"] == pytest.approx(1896.953344)
+        assert row["principal_repayment"] == pytest.approx(1474.53688585)
 
-    assert final_year["principal_repayment"] == pytest.approx(1896.953344)
+    assert final_year["principal_repayment"] == pytest.approx(1474.53688585)
     assert final_year["ending_balance"] == pytest.approx(0)
 
 
@@ -104,10 +104,10 @@ def test_construction_interest_uses_every_construction_year():
     }
     rows = calculate_loan_schedule(**inputs)["schedule"]  # 逐年还本付息明细
 
-    assert rows[0]["new_borrowing"] == pytest.approx(21964.8)
+    assert rows[0]["new_borrowing"] == pytest.approx(17056.94116)
     assert rows[1]["new_borrowing"] == pytest.approx(0)
     assert rows[2]["new_borrowing"] == pytest.approx(0)
-    assert rows[3]["new_borrowing"] == pytest.approx(5491.2)
+    assert rows[3]["new_borrowing"] == pytest.approx(4264.23529)
     assert rows[2]["interest_expense"] == pytest.approx(
-        (rows[2]["beginning_balance"] + rows[2]["new_borrowing"] / 2) * 0.03
+        (rows[2]["beginning_balance"] + rows[2]["new_borrowing"] / 2) * 0.0285
     )

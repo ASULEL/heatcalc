@@ -13,20 +13,39 @@ def format_result_for_display(data: dict, decimals: int = DISPLAY_DECIMALS) -> d
     if "loan_result" in data:
         return {
             name: format_result_for_display(data[name], decimals)
-            for name in ("loan_result", "cost_result") if name in data
+            for name in (
+                "loan_result", "cost_result", "revenue_tax_result",
+                "income_tax_result", "cash_flow_result",
+            ) if name in data
+        }
+
+    if "capital" in data and "total_investment" in data:
+        # 现金流量表同时包含资本金和全投资两张表。
+        return {
+            "unit": data["unit"],
+            "capital": format_result_for_display(data["capital"], decimals),
+            "total_investment": format_result_for_display(data["total_investment"], decimals),
         }
 
     if "schedule" in data:
-        return {
-            "unit": data["unit"],
-            "summary": {
-                name: {
+        summary = {}
+        for name, value in data["summary"].items():
+            if name == "irr":
+                summary[name] = {
+                    "value": None if value is None else round(value * 100, 2),
+                    "unit": "%",
+                }
+            elif name == "static_payback_period":
+                summary[name] = {
+                    "value": None if value is None else round(value, 2),
+                    "unit": "年",
+                }
+            else:
+                summary[name] = {
                     "value": value if name == "repayment_end_year" else round(value, MONEY_DECIMALS),
                     "unit": "年" if name == "repayment_end_year" else data["unit"],
                 }
-                for name, value in data["summary"].items()
-            },
-        }
+        return {"unit": data["unit"], "summary": summary}
 
     # 功率和电量从 kW、kWh 转换为 MW、MWh。
     scaled_units = {

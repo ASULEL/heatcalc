@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from openai import APITimeoutError
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -22,7 +23,7 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
+def chat_endpoint(req: ChatRequest):
     """
     接收用户消息和历史对话，调用Agent返回结果
 
@@ -41,12 +42,17 @@ async def chat_endpoint(req: ChatRequest):
             messages.append(AIMessage(content=msg["content"]))
 
     # 当前的 req.message 单独传入，agent_core 会将其追加到历史消息中。
-    reply_text, updated_messages, parameter_form, calculation_results = chat(
-        req.message,
-        messages,
-        parameter_values=req.parameter_values,
-        calculation_results=req.calculation_results,
-    )
+    try:
+        reply_text, _, parameter_form, calculation_results = chat(
+            req.message,
+            messages,
+            parameter_values=req.parameter_values,
+            calculation_results=req.calculation_results,
+        )
+    except APITimeoutError as error:
+        raise HTTPException(status_code=504, detail="模型响应超时，请重试。") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
     # 3. 返回 AI 回复
     return ChatResponse(

@@ -12,16 +12,37 @@ def build_parameter_form(tool: Any, known_values: dict[str, Any] | None = None) 
 
 
 def build_economic_form(step: str, known_values: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """经济测算按步骤读取各自的输入模型，不把两组参数混在一起。"""
+    """经济测算按步骤读取各自的输入模型。"""
+    from heatcalc.agent.cash_flow_inputs import CashFlowInputs
     from heatcalc.agent.cost_inputs import CostScheduleInputs
+    from heatcalc.agent.income_tax_inputs import IncomeTaxInputs
     from heatcalc.agent.loan_inputs import BankLoanInputs
+    from heatcalc.agent.revenue_tax_inputs import RevenueTaxInputs
 
-    inputs = BankLoanInputs if step == "loan" else CostScheduleInputs  # 本步骤输入定义
+    inputs = {
+        "loan": BankLoanInputs, "cost": CostScheduleInputs,
+        "revenue_tax": RevenueTaxInputs, "income_tax": IncomeTaxInputs,
+        "cash_flow": CashFlowInputs,
+    }[step]
     fields = build_input_form(inputs, known_values)  # 展示字段
     for field in fields:
         field["toolName"] = "calculate_economic_scheme"
         field["schemeStep"] = step
     return fields
+
+
+def build_next_economic_form(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """接口与对话共用下一步规则，短项目的运营年数不超过已有成本年份。"""
+    if result["step"] == "loan":
+        return build_economic_form("cost")
+    if result["step"] == "cost":
+        available = sum(row["phase"] == "运营期" for row in result["cost_result"]["schedule"])
+        return build_economic_form("revenue_tax", {"operating_years": min(25, available)})
+    if result["step"] == "revenue_tax":
+        return build_economic_form("income_tax")
+    if result["step"] == "income_tax":
+        return build_economic_form("cash_flow")
+    return []
 
 
 def build_input_form(

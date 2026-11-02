@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, watch, ref } from 'vue'
-import type { ChatMessage, CostScheduleInputs, ParameterField } from '../types'
+import type { CashFlowInputs, ChatMessage, CostScheduleInputs, IncomeTaxInputs, ParameterField, RevenueTaxInputs } from '../types'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -9,12 +9,18 @@ const props = defineProps<{
   messages: ChatMessage[]
   loading: boolean
   focusedMessageId?: string | null
+  exportingSchemeId?: string | null
+  exportError?: { schemeId: string; message: string } | null
 }>()
 
 const emit = defineEmits<{
   send: [text: string]
   submitParameters: [fields: ParameterField[], values: Record<string, string>, messageId: string]
   submitCostParameters: [inputs: CostScheduleInputs, messageId: string]
+  submitRevenueTaxParameters: [inputs: RevenueTaxInputs, messageId: string]
+  submitIncomeTaxParameters: [inputs: IncomeTaxInputs, messageId: string]
+  submitCashFlowParameters: [inputs: CashFlowInputs, messageId: string]
+  export: [schemeId: string]
 }>()
 
 const scrollArea = ref<HTMLDivElement | null>(null)
@@ -31,7 +37,7 @@ const quickPrompts = [
 const availableTools = [
   {
     icon: '▦', title: '经济测算',
-    description: '按方案依次生成借款还本付息表和成本计算表',
+    description: '按方案依次生成借款、成本和收入及税金表',
     prompt: '开始经济测算',
   },
   {
@@ -239,8 +245,14 @@ watch(() => props.focusedMessageId, async (id) => {
           :id="m.id"
           :message="m"
           :loading="loading"
+          :exporting-scheme-id="exportingSchemeId"
+          :export-error="exportError"
           @submit-parameters="(fields, values, messageId) => emit('submitParameters', fields, values, messageId)"
           @submit-cost-parameters="(inputs, messageId) => emit('submitCostParameters', inputs, messageId)"
+          @submit-revenue-tax-parameters="(inputs, messageId) => emit('submitRevenueTaxParameters', inputs, messageId)"
+          @submit-income-tax-parameters="(inputs, messageId) => emit('submitIncomeTaxParameters', inputs, messageId)"
+          @submit-cash-flow-parameters="(inputs, messageId) => emit('submitCashFlowParameters', inputs, messageId)"
+          @export="(schemeId) => emit('export', schemeId)"
         />
 
         <div v-if="loading" class="mx-4 my-5 rounded-2xl border border-blue-100 bg-white px-5 py-4 shadow-sm sm:mx-6" role="status" aria-label="正在计算">

@@ -5,13 +5,13 @@ from typing import Any
 
 # 来自“熔盐储能项目_借款还本付息表”的默认输入，金额单位为万元。
 DEFAULT_LOAN_SCHEDULE_INPUTS = {
-    "static_investment": 34320.0,              # 静态投资
-    "loan_ratio": 0.80,                        # 贷款比例
-    "investment_interest_rate": 0.03,          # 投资贷款利率
-    "construction_interest_rate": 0.03,        # 建设期贷款利率
+    "static_investment": 30458.8235,           # 静态投资，当前 Excel 为设备总投资 25890 / 0.85
+    "loan_ratio": 0.70,                        # 贷款比例
+    "investment_interest_rate": 0.0285,        # 投资贷款利率
+    "construction_interest_rate": 0.0285,      # 建设期贷款利率
     "construction_years": 2,                   # 建设期年数
     "first_drawdown_ratio": 0.80,              # 第一次贷款比例，在第1年提款
-    "second_drawdown_year": 3,                 # 第二次贷款年份
+    "second_drawdown_year": 2,                 # 第二次贷款年份
     "repayment_years": 15,                     # 还本期
     "schedule_years": 30,                      # 表内列示年数
 }
